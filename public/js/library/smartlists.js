@@ -101,6 +101,8 @@ export function updateGuidedButtonCount() {
 }
 
 let cachedReadingLists = [];
+let readingListsLoaded = false;
+let readingListsFetchPromise = null;
 
 export function normalizePub(str) {
   return String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -137,33 +139,43 @@ export function matchesPublisher(list, publisherName) {
   return false;
 }
 
-export async function fetchAndCacheReadingLists() {
-  try {
-    const fetchLists = (state.ReadingLists || window.ReadingLists)?.fetchReadingLists;
-    if (typeof fetchLists === 'function') {
-      cachedReadingLists = await fetchLists();
-    } else {
-      const resp = await fetch('/api/v1/reading-lists');
-      const data = await resp.json();
-      if (data && data.ok) {
-        cachedReadingLists = data.lists || [];
+export function fetchAndCacheReadingLists() {
+  if (readingListsFetchPromise) return readingListsFetchPromise;
+
+  readingListsFetchPromise = Promise.resolve().then(async () => {
+    try {
+      const fetchLists = (state.ReadingLists || window.ReadingLists)?.fetchReadingLists;
+      if (typeof fetchLists === 'function') {
+        cachedReadingLists = await fetchLists();
+        readingListsLoaded = true;
+      } else {
+        const resp = await fetch('/api/v1/reading-lists');
+        const data = await resp.json();
+        if (data && data.ok) {
+          cachedReadingLists = data.lists || [];
+          readingListsLoaded = true;
+        }
+      }
+    } catch (err) {
+      console.warn('[smartlists] Error caching reading lists:', err);
+    }
+    updateReadingListFilterButtonCount();
+
+    const currentView = state.currentView || window.currentView;
+    const scope = state.activeSmartFilter || window.activeSmartFilter;
+    if (scope === 'reading-list' && (currentView === 'publishers' || currentView === 'series')) {
+      const applyFilter = state.applyFilterAndRender || window.applyFilterAndRender || state.LibraryRender?.applyFilterAndRender;
+      if (typeof applyFilter === 'function') {
+        applyFilter();
       }
     }
-  } catch (err) {
-    console.warn('[smartlists] Error caching reading lists:', err);
-  }
-  updateReadingListFilterButtonCount();
 
-  const currentView = state.currentView || window.currentView;
-  const scope = state.activeSmartFilter || window.activeSmartFilter;
-  if (scope === 'reading-list' && (currentView === 'publishers' || currentView === 'series')) {
-    const applyFilter = state.applyFilterAndRender || window.applyFilterAndRender || state.LibraryRender?.applyFilterAndRender;
-    if (typeof applyFilter === 'function') {
-      applyFilter();
-    }
-  }
+    return cachedReadingLists;
+  }).finally(() => {
+    readingListsFetchPromise = null;
+  });
 
-  return cachedReadingLists;
+  return readingListsFetchPromise;
 }
 
 export function getCachedReadingLists() {
@@ -172,12 +184,13 @@ export function getCachedReadingLists() {
 
 export function setCachedReadingLists(lists) {
   cachedReadingLists = Array.isArray(lists) ? lists : [];
+  readingListsLoaded = true;
   updateReadingListFilterButtonCount();
 }
 
 export function getReadingListsForPublisher(publisherName) {
   if (!publisherName) return [];
-  if (cachedReadingLists.length === 0) {
+  if (!readingListsLoaded && !readingListsFetchPromise) {
     fetchAndCacheReadingLists();
   }
   return cachedReadingLists.filter(list => matchesPublisher(list, publisherName));
@@ -193,7 +206,7 @@ export function updateReadingListFilterButtonCount() {
   const currentRootFolder = state.currentRootFolder || window.currentRootFolder;
   const library = state.library || window.library;
 
-  if (cachedReadingLists.length === 0) {
+  if (!readingListsLoaded && !readingListsFetchPromise) {
     fetchAndCacheReadingLists();
   }
 
