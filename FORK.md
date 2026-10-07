@@ -169,7 +169,7 @@ settings route, preserving the remaining scanner and tagger overlays.
 - Static quality: `npm run build` and `git diff --check` passed. Vite emitted
   its existing config-loader and JSZip warnings; no lint or type-check command
   is configured.
-- Security: no dependency versions changed. Gitleaks scanned all 187 commits
+- Security: no dependency versions changed. Gitleaks scanned all 189 commits
   and found one historical generic API key-like fixture at
   `tests/geminiCompliance.test.js:86` in commit
   `7c5645a76533d5ce8a2490b7651942e0b59c909e`; it remains unresolved. `npm audit
