@@ -98,31 +98,38 @@ Before enabling Actions, configure a read-only validation workflow, pin action
 revisions, remove or disable inherited publishing workflows, and review credentials
 and permissions. Publishing personal images must target the personal namespace.
 
-## Validation evidence and remaining gates
+## Release 1.2.6-personal.1
 
-- Correctness: five new regression cases failed on the original module, then all
-  six passed with the fix. The full existing suite passed: 66 suites, 517 tests.
-- Static: JavaScript syntax and `git diff --check` passed. The full static gate is
-  not met: no lint/type-check tooling is configured, and Vite retains its upstream
-  config-loader and non-module JSZip warnings. Dependency installation also reports
-  existing deprecations. They were not suppressed or changed as part of this fix.
-- Self-review: the code patch matches the tested NAS fix. Tests follow the existing
-  framework. No lockfile, application version, upstream workflows or data changed.
-- Security: repository history was scanned with Gitleaks. It flagged one inherited
-  API-key test literal in `tests/geminiCompliance.test.js`, commit
-  `7c5645a76533d5ce8a2490b7651942e0b59c909e`; no clean-history claim is made.
-  `npm audit --omit=dev` reports existing critical `proxy-addr` and high `sharp`
-  findings. The full security gate is deliberately not met; no dependency upgrade
-  is included in this source-only fork setup.
-- Delivery: locked installation, the full unit suite and frontend build ran locally.
-  CI is deliberately not enabled until fork-safe automation is reviewed. A custom
-  Docker image and end-to-end suite were not built/run, so the full gate is not met.
-- Runtime: the regression verifies failure logging and explicit retry. No fork
-  version was deployed and no new live-runtime claim is made during source setup.
-- Reversibility: source changes can be reverted on `personal`. The installed NAS
-  version and its existing rollback remain untouched; a future image deployment
-  must retain its previous image and configuration before switching versions.
-# Folder exclusions (local, unreleased)
+Deployed on October 7, 2026 to SynoLiberec as a frontend-only release. The service
+continues to use the pinned image
+`ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109`.
+The version label is visible beside the logo. The release also includes the comic
+metadata dialog, per-field search, sticky library header, and the existing excluded
+folder and Bédéthèque settings controls.
+
+### Validation evidence and remaining gates
+
+- Correctness: all 70 Jest suites and 545 tests passed.
+- Static quality: CSS generation and the production build passed. Vite reported its
+  existing config-loader and non-module JSZip warnings; Browserslist also reported
+  stale `caniuse-lite` data. No lint or type-check command is configured.
+- Self-review: source is committed as `8bac5cc` on
+  `feature/comic-search-metadata-view`. The release changes only the frontend
+  overlay; it keeps the current container image and backend overlays.
+- Security: Gitleaks flagged one historical API-key-like test value in commit
+  `7c5645a76533d5ce8a2490b7651942e0b59c909e`. The production dependency audit found
+  critical `proxy-addr` and high `sharp` advisories. These existing dependencies
+  were not changed in this frontend-only release.
+- Delivery: built from the fork source and deployed to the versioned overlay.
+  GitHub Actions remain disabled; the feature branch has not been pushed.
+- Runtime: the page, JavaScript and CSS returned HTTP 200; the browser showed
+  `v1.2.6-personal.1`; the container is running and healthy. The pinned image is
+  unchanged.
+- Reversibility: the prior Compose file is at
+  `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.1/docker-compose.yml`.
+  Restore it and recreate the service to return to the previous frontend overlay.
+
+# Folder exclusions (deployed)
 
 In Settings, each configured library has an **Excluded folders** field. Enter one
 relative folder per line, such as `Archive/Old` or `Private`, then save. Paths are
@@ -136,6 +143,6 @@ while excluded. Exclusions apply to all users, including administrators, and are
 not a replacement for filesystem permissions. Matching is lexical: use the path
 under which a folder is indexed rather than a separate symlink alias.
 
-Rollback: clear the exclusions and save before returning to the previous app
-artifact. This change requires no database migration. No Synology deployment is
-included in the local implementation.
+The feature uses no database migration and retains comic files and reading
+progress. The current NAS deployment keeps the excluded-folder settings and
+server overlays active.

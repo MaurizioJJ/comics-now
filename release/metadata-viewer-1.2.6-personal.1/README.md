@@ -5,6 +5,9 @@ search controls, and the visible version label. It preserves the live library
 exclusion controls and Bédéthèque source option. The existing 1.2.5 container and
 its server overlays provide the search API and remain unchanged.
 
+Deployed to SynoLiberec on October 7, 2026. The container remains on the pinned
+image `ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109`.
+
 ## Build
 
 From the repository root, run:
