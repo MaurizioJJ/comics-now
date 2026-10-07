@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../server/config');
+const excludedFolders = require('../server/services/excluded-folders');
 const { CONFIG_FILE } = require('../server/constants');
 const { dbRun, dbGet, checkComicAccess } = require('../server/db');
 const { scanLibrary } = require('../server/services/library-scan');
@@ -52,11 +53,13 @@ describe('Library folder exclusions', () => {
     config.setLibraryExclusions(root, { excludedFolderNameContains: [' old ', 'PRIVATE', 'old'] });
     expect(config.getLibraries()[0].excludedFolderNameContains).toEqual(['old', 'PRIVATE']);
     expect(config.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'))).toBe(true);
+    expect(excludedFolders.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'), [])).toBe(true);
     expect(config.isPathExcluded(path.join(root, 'private scans', 'nested', 'comic.cbz'))).toBe(true);
     expect(config.isPathExcluded(path.join(root, 'Visible', 'My Old Comic.cbz'))).toBe(false);
     expect(config.isPathExcluded(path.join(root + '-other', 'Old', 'comic.cbz'))).toBe(false);
     config.setLibraryExclusions(root, { excludedFolderNameContains: [] });
     expect(config.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'))).toBe(false);
+    expect(excludedFolders.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'), [])).toBe(false);
   });
 
   test('keeps legacy global path exclusions working alongside per-library rules', () => {

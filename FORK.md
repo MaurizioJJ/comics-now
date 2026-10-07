@@ -149,14 +149,11 @@ server overlays active.
 
 ## Release 1.2.6-personal.2
 
-This release fetches full ComicInfo metadata when opening a comic's metadata
-dialog. The library API intentionally returns a reduced metadata object for
-performance; the dialog now uses `/api/v1/comics/info` to load the complete
-record. It also adds an optional case-insensitive folder-name substring list to
-each library's exclusion settings. Existing global exact-path exclusions and
-per-library exact relative paths remain supported. Exclusions hide matching
-subtrees from browsing and search and skip them during scans; comic files and
-reading progress are retained.
+This release fetched full ComicInfo metadata when opening a comic's metadata
+dialog. It also introduced an optional case-insensitive folder-name substring
+list per library. The legacy helper still used by live scanning and browsing did
+not yet apply that new list; release `1.2.6-personal.3` wires it through all
+three paths.
 
 Deployed October 7, 2026 to SynoLiberec. The image remains pinned to
 `ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109`.
@@ -191,3 +188,25 @@ settings route, preserving the remaining scanner and tagger overlays.
   `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.2/`. Restore
   `docker-compose.yml` from that directory and recreate the service to roll
   back.
+
+## Release 1.2.6-personal.3
+
+This correction updates the live `excluded-folders` helper to call the shared
+config matcher. The optional folder-name text rules now apply consistently to
+library scans, folder browsing, and search while retaining global exact-path
+rules. No comic files or reading progress are changed.
+
+Deployed October 7, 2026 to SynoLiberec. The pinned image is unchanged. The
+versioned Compose file adds only the new exclusion-helper overlay alongside the
+versioned frontend and settings/config overlays.
+
+- Correctness: all 71 suites and 559 tests pass, including the scanner/browser
+  helper regression. The full ComicInfo dialog request regression is also
+  covered.
+- Runtime: the container reports healthy and the live page returns HTTP 200
+  with `v1.2.6-personal.3`. A fresh Chrome tab loaded the updated version.
+- Rollback: the current data and prior Compose file are backed up under
+  `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.3/`.
+- Security: the history scan still finds the same test-fixture key-like string;
+  the dependency audit still reports critical `proxy-addr` and high `sharp`
+  findings. Those gates remain open.
