@@ -13,9 +13,11 @@ describe('Library folder exclusions', () => {
   const excludedComic = path.join(root, 'Hidden', 'Nested', 'comic.cbz');
   let originalLibraries;
   let originalInbox;
+  let originalGlobalExclusions;
 
   beforeEach(() => {
     originalLibraries = config.getLibraries();
+    originalGlobalExclusions = config.getConfig().excludedFolders;
     originalInbox = config.getComicsLocation();
     config.getConfig().libraries = [{ path: root, hierarchyMode: 'folder' }];
     config.setComicsLocation(root, true);
@@ -24,6 +26,7 @@ describe('Library folder exclusions', () => {
   afterEach(async () => {
     jest.restoreAllMocks();
     config.getConfig().libraries = originalLibraries;
+    config.getConfig().excludedFolders = originalGlobalExclusions;
     config.setComicsLocation(originalInbox, true);
     await dbRun('DELETE FROM comics WHERE id = ?', ['excluded-test']);
     await dbRun('DELETE FROM user_comic_status WHERE comicId = ?', ['excluded-test']);
@@ -45,6 +48,26 @@ describe('Library folder exclusions', () => {
     expect(config.isPathExcluded(excludedComic)).toBe(false);
   });
 
+  test('matches optional folder-name text at any depth without matching filenames or other libraries', () => {
+    config.setLibraryExclusions(root, { excludedFolderNameContains: [' old ', 'PRIVATE', 'old'] });
+    expect(config.getLibraries()[0].excludedFolderNameContains).toEqual(['old', 'PRIVATE']);
+    expect(config.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'))).toBe(true);
+    expect(config.isPathExcluded(path.join(root, 'private scans', 'nested', 'comic.cbz'))).toBe(true);
+    expect(config.isPathExcluded(path.join(root, 'Visible', 'My Old Comic.cbz'))).toBe(false);
+    expect(config.isPathExcluded(path.join(root + '-other', 'Old', 'comic.cbz'))).toBe(false);
+    config.setLibraryExclusions(root, { excludedFolderNameContains: [] });
+    expect(config.isPathExcluded(path.join(root, 'Series Old Edition', 'comic.cbz'))).toBe(false);
+  });
+
+  test('keeps legacy global path exclusions working alongside per-library rules', () => {
+    const globalFolder = path.join(root, 'LegacyHidden');
+    expect(config.addExcludedFolder(globalFolder)).toBe(true);
+    expect(config.getExcludedFolders()).toContain(globalFolder);
+    expect(config.isPathExcluded(path.join(globalFolder, 'comic.cbz'))).toBe(true);
+    expect(config.removeExcludedFolder(globalFolder)).toBe(true);
+    expect(config.isPathExcluded(path.join(globalFolder, 'comic.cbz'))).toBe(false);
+  });
+
   test.each([null, 'Hidden', [''], ['.'], ['..'], ['../Hidden'], ['/outside'], ['C:\\outside'], ['Hidden/../../outside'], [12], ['bad\0name'], Array(101).fill('Hidden')])(
     'rejects invalid exclusion lists without changing the library: %j', rules => {
       expect(() => config.setLibraryExcludedFolders(root, rules)).toThrow();
@@ -60,6 +83,13 @@ describe('Library folder exclusions', () => {
     write.mockRestore();
   });
 
+  test.each([null, 'Old', [''], ['.'], ['..'], ['../Old'], ['Old/Private'], ['bad\0text'], [12], Array(101).fill('Old')])(
+    'rejects invalid folder-name text rules without changing the library: %j', rules => {
+      expect(() => config.setLibraryExclusions(root, { excludedFolderNameContains: rules })).toThrow();
+      expect(config.getLibraries()[0].excludedFolderNameContains).toBeUndefined();
+    }
+  );
+
   test('the admin endpoint validates input and registers the administrator guard', async () => {
     const routes = new Map();
     const requireAdmin = jest.fn();
@@ -71,7 +101,7 @@ describe('Library folder exclusions', () => {
     expect(handlers[0]).toBe(requireAdmin);
     const response = { json: jest.fn(), status: jest.fn().mockReturnThis() };
     await handlers[1]({ body: { path: root, excludedFolders: ['Hidden'] } }, response);
-    expect(response.json).toHaveBeenCalledWith({ ok: true, excludedFolders: ['Hidden'] });
+    expect(response.json).toHaveBeenCalledWith({ ok: true, excludedFolders: ['Hidden'], excludedFolderNameContains: [] });
     await handlers[1]({ body: { path: root, excludedFolders: ['../outside'] } }, response);
     expect(response.status).toHaveBeenCalledWith(400);
     expect(config.isPathExcluded(excludedComic)).toBe(true);

@@ -151,6 +151,10 @@ async function refreshLibraryFolders() {
         <textarea class="excluded-folders-input block w-full bg-gray-900 border border-gray-600 rounded p-2 mt-1 text-sm" rows="3" placeholder="Archive/Old&#10;Private">${escapeHtml((lib.excludedFolders || []).join('\n'))}</textarea>
       </label>
       <p class="text-xs text-gray-400 mt-1">One relative folder per line, including all subfolders. Files and reading progress are kept. Clear to restore; run a full scan to discover new comics.</p>
+      <label class="block text-sm text-gray-200 mt-3">Optional: exclude any folder whose name contains
+        <textarea class="excluded-folder-name-contains-input block w-full bg-gray-900 border border-gray-600 rounded p-2 mt-1 text-sm" rows="2" placeholder="Archive&#10;Private">${escapeHtml((lib.excludedFolderNameContains || []).join('\n'))}</textarea>
+      </label>
+      <p class="text-xs text-gray-400 mt-1">One text match per line. Matching is case-insensitive and applies to folder names at any depth.</p>
       <button class="save-exclusions-btn text-sm text-purple-300 mt-2" data-index="${index}">Save exclusions</button>
       <span class="exclusions-status text-xs text-gray-300 ml-2" role="status"></span>
       </div>
@@ -160,17 +164,23 @@ async function refreshLibraryFolders() {
       button.addEventListener('click', async () => {
         const card = button.parentElement;
         const input = card.querySelector('.excluded-folders-input');
+        const nameContainsInput = card.querySelector('.excluded-folder-name-contains-input');
         const status = card.querySelector('.exclusions-status');
         button.disabled = true;
         status.textContent = 'Saving…';
         try {
           const response = await fetch(`${global.API_BASE_URL}/api/v1/admin/library-exclusions`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: data.libraries[Number(button.dataset.index)].path, excludedFolders: input.value.split('\n').map(value => value.trim()).filter(Boolean) })
+            body: JSON.stringify({
+              path: data.libraries[Number(button.dataset.index)].path,
+              excludedFolders: input.value.split('\n').map(value => value.trim()).filter(Boolean),
+              excludedFolderNameContains: nameContainsInput.value.split('\n').map(value => value.trim()).filter(Boolean)
+            })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.message || 'Failed to save exclusions');
           input.value = result.excludedFolders.join('\n');
+          nameContainsInput.value = result.excludedFolderNameContains.join('\n');
           status.textContent = 'Saved';
           if (typeof global.fetchLibraryFromServer === 'function') await global.fetchLibraryFromServer();
           else if (typeof global.fetchLibrary === 'function') await global.fetchLibrary();

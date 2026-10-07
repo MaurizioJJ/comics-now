@@ -146,3 +146,48 @@ under which a folder is indexed rather than a separate symlink alias.
 The feature uses no database migration and retains comic files and reading
 progress. The current NAS deployment keeps the excluded-folder settings and
 server overlays active.
+
+## Release 1.2.6-personal.2
+
+This release fetches full ComicInfo metadata when opening a comic's metadata
+dialog. The library API intentionally returns a reduced metadata object for
+performance; the dialog now uses `/api/v1/comics/info` to load the complete
+record. It also adds an optional case-insensitive folder-name substring list to
+each library's exclusion settings. Existing global exact-path exclusions and
+per-library exact relative paths remain supported. Exclusions hide matching
+subtrees from browsing and search and skip them during scans; comic files and
+reading progress are retained.
+
+Deployed October 7, 2026 to SynoLiberec. The image remains pinned to
+`ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109`.
+The new versioned Compose file mounts the release's frontend, config, and admin
+settings route, preserving the remaining scanner and tagger overlays.
+
+### Release evidence and remaining gates
+
+- Correctness: all 71 Jest suites and 559 tests passed. The metadata dialog
+  regression test failed before the fix because it made no full-metadata
+  request, then passed after the change. Focused exclusion and dialog suites
+  also passed.
+- Static quality: `npm run build` and `git diff --check` passed. Vite emitted
+  its existing config-loader and JSZip warnings; no lint or type-check command
+  is configured.
+- Security: no dependency versions changed. Gitleaks scanned all 187 commits
+  and found one historical generic API key-like fixture at
+  `tests/geminiCompliance.test.js:86` in commit
+  `7c5645a76533d5ce8a2490b7651942e0b59c909e`; it remains unresolved. `npm audit
+  --omit=dev --audit-level=critical` reported critical `proxy-addr` and high
+  `sharp` advisories. The security gate remains open.
+- Delivery: built frontend and server overlays are in
+  `release/comics-now-1.2.6-personal.2/`. The immutable upstream image and all
+  unrelated live mounts remain unchanged.
+- Runtime: Synology reports the container healthy; the live page returned
+  HTTP 200 and served `v1.2.6-personal.2`. An unauthenticated request to the
+  admin exclusion endpoint returned HTTP 401, confirming the route is behind
+  its admin guard. Browser UI also loaded the new version. The metadata dialog
+  action itself was validated by the dialog-level regression test, not clicked
+  in the live browser.
+- Reversibility: the prior Compose file and a 517 MB data backup are at
+  `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.2/`. Restore
+  `docker-compose.yml` from that directory and recreate the service to roll
+  back.

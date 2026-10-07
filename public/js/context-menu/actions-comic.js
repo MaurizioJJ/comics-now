@@ -1,4 +1,4 @@
-import { state } from '../globals.js';
+import { state, encodePath } from '../globals.js';
 import { positionContextMenu, attachCloseHandler, closeContextMenu } from './menu-builder.js';
 import { createComicMetadataViewModel } from './metadata-view-model.mjs';
 import {
@@ -63,7 +63,22 @@ function addMetadataSection(parent, title, values) {
   parent.appendChild(section);
 }
 
-function openComicMetadata(comic) {
+async function openComicMetadata(comic) {
+  let metadataLoadError = false;
+  const isLocal = comic.handle || comic.file || (comic.id && String(comic.id).startsWith('device-'));
+  if (!isLocal && comic.path) {
+    try {
+      const base = state.API_BASE_URL || window.API_BASE_URL || '';
+      const response = await fetch(`${base}/api/v1/comics/info?path=${encodeURIComponent(encodePath(comic.path))}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const metadata = await response.json();
+      if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) comic = { ...comic, metadata };
+      else throw new Error('Invalid metadata response');
+    } catch (error) {
+      metadataLoadError = true;
+      console.warn('[comic-metadata] Could not load full ComicInfo metadata:', error);
+    }
+  }
   const viewModel = createComicMetadataViewModel(comic);
   const overlay = metadataElement('div', 'comic-metadata-overlay');
   const dialog = metadataElement('section', 'comic-metadata-dialog');
@@ -153,7 +168,10 @@ function openComicMetadata(comic) {
     details.appendChild(list);
     body.appendChild(details);
   }
-  if (!viewModel.facts.length && !viewModel.credits.length && !viewModel.summary && !viewModel.sections.length) {
+  if (metadataLoadError) {
+    body.appendChild(metadataElement('p', 'comic-metadata-load-error', 'Could not load full ComicInfo metadata from the library. Showing any details already available.'));
+  }
+  if (!metadataLoadError && !viewModel.facts.length && !viewModel.credits.length && !viewModel.summary && !viewModel.sections.length) {
     body.appendChild(metadataElement('p', 'comic-metadata-empty', 'No ComicInfo metadata has been recorded for this comic yet.'));
   }
   dialog.append(body, metadataElement('footer', 'comic-metadata-footer', comic.name || ''));
@@ -212,6 +230,7 @@ function showComicContextMenu(event, comic) {
 
 // Expose function for cross-phase compatibility
 export { showComicContextMenu };
+export { openComicMetadata };
 state.showComicContextMenu = showComicContextMenu;
 if (typeof window !== 'undefined') {
   window.showComicContextMenu = showComicContextMenu;

@@ -1,7 +1,7 @@
 /**
  * Admin Settings Routes
- * @param {object} router 
- * @param {object} deps 
+ * @param {object} router
+ * @param {object} deps
  */
 module.exports = function attach(router, deps) {
   router.post('/api/v1/admin/library-exclusions', deps.requireAdmin, (req, res) => {

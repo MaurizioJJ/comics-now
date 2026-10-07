@@ -52,8 +52,8 @@ function applyEnvOverrides() {
   if (process.env.METADATA_STORAGE) config.metadata_storage = process.env.METADATA_STORAGE;
   if (process.env.TRUST_PROXY) {
     const tp = process.env.TRUST_PROXY;
-    config.trustProxy = (tp === 'true') ? true : 
-                        (tp === 'false') ? false : 
+    config.trustProxy = (tp === 'true') ? true :
+                        (tp === 'false') ? false :
                         (!isNaN(Number(tp))) ? Number(tp) : tp;
   }
   if (process.env.TAGGER_SERVICE_URL) config.taggerServiceUrl = process.env.TAGGER_SERVICE_URL;
@@ -221,9 +221,9 @@ function setLibraries(newLibraries, skipSave = false) {
 function addLibrary(dir, mode = 'metadata') {
   const normalized = normalizeDirectory(dir);
   if (!normalized) return false;
-  
+
   if (getComicsDirectories().includes(normalized)) return false;
-  
+
   config.libraries.push({ path: normalized, hierarchyMode: mode });
   saveConfigToDisk();
   return true;
@@ -232,10 +232,10 @@ function addLibrary(dir, mode = 'metadata') {
 function removeLibrary(dir) {
   const normalized = normalizeDirectory(dir);
   if (!normalized) return false;
-  
+
   const initialLength = config.libraries.length;
   config.libraries = config.libraries.filter(lib => normalizeDirectory(lib.path) !== normalized);
-  
+
   if (config.libraries.length !== initialLength) {
     saveConfigToDisk();
     return true;
@@ -285,18 +285,18 @@ function loadConfigFromDisk() {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    
+
     // Migration: If legacy comicsDirectories exists, use it to backfill libraries if libraries is empty
     if (Array.isArray(parsed.comicsDirectories) && parsed.comicsDirectories.length > 0 && (!parsed.libraries || parsed.libraries.length === 0)) {
       parsed.libraries = parsed.comicsDirectories.map(dir => ({ path: dir, hierarchyMode: 'metadata' }));
     }
-    
+
     // Remove legacy key from the loaded object
     delete parsed.comicsDirectories;
 
     // Merge parsed config over defaults
     config = { ...DEFAULT_CONFIG, ...parsed };
-    
+
     // Sanitize libraries
     config.libraries = sanitizeDirectories(config.libraries);
 
