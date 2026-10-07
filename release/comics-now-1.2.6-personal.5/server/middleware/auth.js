@@ -1,0 +1,332 @@
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const path = require('path');
+const { isAuthEnabled, getAdminEmail, getCloudflareConfig, getTrustedIPs } = require('../config');
+const { dbRun, dbGet, dbAll } = require('../db');
+const { autoSeedNewUserReadingLists } = require('../services/readingLists');
+const { log } = require('../logger');
+
+let jwksClientInstance = null;
+let jwksConfigErrorLogged = false;
+
+const lastSeenCache = new Map();
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+
+async function recordUserActivity(userId, email, role) {
+  const now = Date.now();
+  const lastRecorded = lastSeenCache.get(userId);
+  if (!lastRecorded || (now - lastRecorded) > LAST_SEEN_THROTTLE_MS) {
+    lastSeenCache.set(userId, now);
+    try {
+      await dbRun(`
+        INSERT INTO users (userId, email, role, lastSeen)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(userId) DO UPDATE SET
+          email = excluded.email,
+          role = excluded.role,
+          lastSeen = excluded.lastSeen
+      `, [userId, email, role, now]);
+    } catch (error) {
+      log('ERROR', 'AUTH', `User upsert failed: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Initialize JWKS client for JWT verification
+ * Only called when authentication is enabled
+ */
+function initJwksClient() {
+  if (!isAuthEnabled()) return null;
+
+  const cfConfig = getCloudflareConfig();
+  const teamDomain = cfConfig.teamDomain || process.env.CF_TEAM_DOMAIN;
+  const audience = cfConfig.audience || process.env.CF_AUDIENCE;
+
+  if (!teamDomain || !audience) {
+    if (!jwksConfigErrorLogged) {
+      log('ERROR', 'AUTH', `Auth is enabled but Cloudflare config is incomplete (teamDomain=${!!teamDomain}, audience=${!!audience}). All JWT verification will fail until config.json or env vars are set.`);
+      jwksConfigErrorLogged = true;
+    }
+    return null;
+  }
+
+  if (!jwksClientInstance) {
+    jwksClientInstance = jwksClient({
+      jwksUri: `https://${teamDomain}/cdn-cgi/access/certs`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 3600000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10
+    });
+    log('INFO', 'AUTH', `JWKS client initialized for ${teamDomain}`);
+  }
+
+  return jwksClientInstance;
+}
+
+/**
+ * Get signing key for JWT verification
+ */
+function getKey(header, callback) {
+  const client = initJwksClient();
+  if (!client) {
+    return callback(new Error('JWKS client not initialized'));
+  }
+
+  client.getSigningKey(header.kid, (err, key) => {
+    if (err) return callback(err);
+    const signingKey = key.publicKey || key.rsaPublicKey;
+    callback(null, signingKey);
+  });
+}
+
+/**
+ * Check if an IP matches a pattern (supports wildcards like 192.168.0.*)
+ */
+function isIPInTrustedList(clientIP, trustedIPs) {
+  for (const pattern of trustedIPs) {
+    // Exact match
+    if (clientIP === pattern) return true;
+
+    // Wildcard match (e.g., 192.168.0.*)
+    if (pattern.includes('*')) {
+      const escaped = pattern
+        .replace(/[+?^${}()|[\]\\]/g, '\\$&') // escape special regex chars including backslash
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*');
+      const regex = new RegExp('^' + escaped + '$');
+      if (regex.test(clientIP)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extract user from Cloudflare Zero Trust JWT
+ * If auth is disabled, creates a default admin user
+ */
+async function extractUserFromJWT(req, res, next) {
+  // ===== PUBLIC ROUTES (no auth required) =====
+  // These assets are needed for the PWA to load and display the login UI.
+  // Match against req.path (no query string) using exact paths or strict
+  // prefixes — substring matching on req.url let crafted query strings
+  // bypass auth (e.g. ?manifest.json=1).
+  const publicExactPaths = new Set([
+    '/',
+    '/index.html',
+    '/manifest.json',
+    '/service-worker.js',
+    '/favicon.ico',
+    '/tailwind.css',
+    '/style.css',
+    '/jszip.min.js'
+  ]);
+  const publicPathPrefixes = ['/icons/', '/screenshots/', '/js/', '/assets/'];
+
+  // Normalize path to prevent path traversal (VULN-001)
+  const normalizedPath = path.posix.normalize(req.path);
+
+  const isPublicPath =
+    publicExactPaths.has(normalizedPath) ||
+    publicPathPrefixes.some(prefix => normalizedPath.startsWith(prefix));
+
+  if (isPublicPath) {
+    return next();
+  }
+
+  // ===== AUTH DISABLED MODE =====
+  if (!isAuthEnabled()) {
+    // For testing: Allow mocking different users via X-Test-User-Id header.
+    // Issue #6: only honor these in the test harness, never in production
+    // images — otherwise any client can impersonate an arbitrary userId.
+    const allowTestUserHeaders =
+      process.env.NODE_ENV === 'test' || process.env.ALLOW_TEST_USER_HEADERS === '1';
+    const testUserId = allowTestUserHeaders ? req.headers['x-test-user-id'] : undefined;
+    const testUserEmail = allowTestUserHeaders ? req.headers['x-test-user-email'] : undefined;
+    const testUserRole = allowTestUserHeaders ? req.headers['x-test-user-role'] : undefined;
+
+    let userId = 'default-user';
+    let email = 'local@localhost';
+    let role = 'admin';
+
+    // Allow mock users when auth is disabled (for testing)
+    if (testUserId) {
+      userId = testUserId;
+      email = testUserEmail || `${testUserId}@test.local`;
+      role = testUserRole || 'user';
+    }
+
+    req.user = {
+      userId,
+      email,
+      role
+    };
+
+    // Ensure user exists in database
+    await recordUserActivity(userId, email, role);
+
+    return next();
+  }
+
+  // ===== AUTH ENABLED MODE =====
+
+  const jwtToken = req.headers['cf-access-jwt-assertion'];
+
+  // Check if request is from a trusted IP (bypass auth ONLY if no JWT token present)
+  // This allows Cloudflare-authenticated users to use their real identity even from trusted IPs
+  if (!jwtToken) {
+    const trustedIPs = getTrustedIPs();
+    if (trustedIPs.length > 0) {
+      // Issue #10: the trusted-IP bypass must only apply to requests that are
+      // demonstrably DIRECT. Behind a local reverse proxy/tunnel (cloudflared,
+      // nginx, Caddy) the TCP peer is always the proxy (e.g. 127.0.0.1), so
+      // trusting the socket address would make every forwarded, unauthenticated
+      // request admin. Any forwarding header means we cannot prove the request
+      // is direct, so we refuse the bypass and fall through to JWT/401.
+      const isForwarded = Boolean(
+        req.headers['x-forwarded-for'] ||
+        req.headers['forwarded'] ||
+        req.headers['cf-connecting-ip']
+      );
+      const directSocketIP = (req.socket?.remoteAddress || req.connection?.remoteAddress)?.replace(/^::ffff:/, '');
+      const clientIP = req.ip?.replace(/^::ffff:/, '');
+      const isTrusted = !isForwarded &&
+        (isIPInTrustedList(directSocketIP, trustedIPs) || isIPInTrustedList(clientIP, trustedIPs));
+
+      if (isTrusted) {
+        req.user = {
+          userId: 'default-user',
+          email: 'local@localhost',
+          role: 'admin'
+        };
+
+        // Ensure local admin user exists in database
+        await recordUserActivity('default-user', 'local@localhost', 'admin');
+
+        return next();
+      }
+    }
+  }
+
+  // Development bypass (only if NODE_ENV is development)
+  if (!jwtToken && process.env.NODE_ENV === 'development') {
+    req.user = {
+      email: 'dev@localhost',
+      userId: 'dev-user-1',
+      role: 'admin'
+    };
+
+    // Create dev user in database
+    await recordUserActivity('dev-user-1', 'dev@localhost', 'admin');
+
+    return next();
+  }
+
+  if (!jwtToken) {
+    return res.status(401).json({
+      error: 'Unauthorized - No authentication token provided',
+      hint: 'Access this app through Cloudflare Zero Trust'
+    });
+  }
+
+  try {
+    const cfConfig = getCloudflareConfig();
+    const teamDomain = cfConfig.teamDomain || process.env.CF_TEAM_DOMAIN;
+    const audience = cfConfig.audience || process.env.CF_AUDIENCE;
+
+    if (!teamDomain || !audience) {
+      throw new Error('Cloudflare configuration incomplete');
+    }
+
+    // Verify JWT with pinned RS256 algorithm
+    const decoded = await new Promise((resolve, reject) => {
+      jwt.verify(jwtToken, getKey, {
+        audience: audience,
+        issuer: `https://${teamDomain}`,
+        algorithms: ['RS256']
+      }, (err, decoded) => {
+        if (err) reject(err);
+        else resolve(decoded);
+      });
+    });
+
+    const email = decoded.email;
+    const userId = decoded.sub; // Subject = unique user ID
+    const adminEmail = getAdminEmail();
+    const isAdmin = email === adminEmail;
+
+    // Upsert user in database
+    await recordUserActivity(userId, email, isAdmin ? 'admin' : 'user');
+
+    // Get user from database (in case role was updated)
+    const user = await dbGet('SELECT * FROM users WHERE userId = ?', [userId]);
+
+    req.user = {
+      userId: user.userId,
+      email: user.email,
+      role: user.role
+    };
+
+    // Auto-seed default reading lists for new users
+    autoSeedNewUserReadingLists(user.userId, { dbRun, dbGet, dbAll, log }).catch(err => {
+      log('ERROR', 'AUTH', `Auto-seed reading lists error: ${err.message}`);
+    });
+
+    next();
+  } catch (error) {
+    log('WARN', 'AUTH', `JWT verification failed: ${error.message}`);
+    return res.status(401).json({
+      error: 'Invalid authentication token',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+}
+
+/**
+ * Require admin role
+ * When auth is disabled, all users are admin
+ */
+function requireAdmin(req, res, next) {
+  // When auth is disabled, everyone is admin
+  if (!isAuthEnabled()) {
+    return next();
+  }
+
+  // When auth is enabled, check role
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden: Admin access required',
+      hint: 'This feature is only available to administrators'
+    });
+  }
+  next();
+}
+
+/**
+ * Require any authenticated user
+ * When auth is disabled, all requests are allowed
+ */
+function requireAuth(req, res, next) {
+  // When auth is disabled, everyone is authenticated
+  if (!isAuthEnabled()) {
+    return next();
+  }
+
+  // When auth is enabled, check user exists
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      hint: 'Please sign in to access this resource'
+    });
+  }
+  next();
+}
+
+module.exports = {
+  extractUserFromJWT,
+  requireAdmin,
+  requireAuth,
+  initJwksClient
+};

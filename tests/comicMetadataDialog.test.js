@@ -12,7 +12,10 @@ describe('comic metadata dialog', () => {
     global.TextEncoder = require('util').TextEncoder;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ Title: 'Recovered from ComicInfo.xml', Writer: 'Ada Writer', LanguageISO: 'fre' })
+      json: async () => ({
+        Title: 'Recovered from ComicInfo.xml', Writer: 'Ada Writer', LanguageISO: 'fre',
+        Genre: 'Alternate history', Pages: { Page: [{ Image: '0001.jpg' }] }
+      })
     });
   });
 
@@ -25,6 +28,9 @@ describe('comic metadata dialog', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/comics/info?path=bGliXzAvU2VyaWVzL2lzc3VlLmNieg%3D%3D');
     expect(document.querySelector('.comic-metadata-title').textContent).toBe('Recovered from ComicInfo.xml');
     expect(document.querySelector('.comic-metadata-empty')).toBeNull();
+    expect(document.querySelector('.comic-metadata-all').open).toBe(true);
+    expect(document.querySelector('.comic-metadata-all').textContent).toContain('Genre');
+    expect(document.querySelector('.comic-metadata-all').textContent).toContain('Pages');
   });
 
   test('shows an explicit load error instead of claiming metadata is absent when the request fails', async () => {

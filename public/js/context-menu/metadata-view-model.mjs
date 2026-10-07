@@ -36,6 +36,22 @@ function displayValue(value) {
   return value == null ? '' : String(value).trim();
 }
 
+function fullMetadataValue(value) {
+  if (Array.isArray(value) && value.every(item => item == null || typeof item !== 'object')) return displayValue(value);
+  if (value && typeof value === 'object') return JSON.stringify(value, null, 2);
+  return displayValue(value);
+}
+
+function issueFromComicName(comic, metadata) {
+  const candidates = [comic.name, metadata.Title, comic.title];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const match = candidate.match(/(?:^|[^a-z0-9])T0*(\d+)(?=$|[^a-z0-9])/i);
+    if (match) return match[1];
+  }
+  return '';
+}
+
 function valueFor(metadata, keys) {
   const keySet = new Set(keys.map(key => key.toLocaleLowerCase()));
   const entry = Object.entries(metadata).find(([key, value]) => keySet.has(key.toLocaleLowerCase()) && displayValue(value));
@@ -64,6 +80,10 @@ export function createComicMetadataViewModel(comic = {}) {
   });
   const facts = FACT_FIELDS.flatMap(field => {
     const item = valueFor(metadata, field.keys);
+    if (field.label === 'Issue') {
+      const filenameIssue = issueFromComicName(comic, metadata);
+      if (filenameIssue) return [{ label: 'Issue', value: filenameIssue, key: 'filename' }];
+    }
     if (!item) return [];
     const value = field.label === 'Language' ? presentLanguage(item.value) : item.value;
     return [{ label: field.label, value, key: item.key }];
@@ -83,7 +103,13 @@ export function createComicMetadataViewModel(comic = {}) {
     facts,
     sections,
     allMetadata: Object.entries(metadata)
+      .filter(([key]) => !/^xmlns(?::|$)/i.test(key))
       .filter(([, value]) => displayValue(value))
-      .map(([key, value]) => ({ key, value: displayValue(value) }))
+      .map(([key, value]) => ({
+        key,
+        value: key.toLocaleLowerCase() === 'number' && issueFromComicName(comic, metadata)
+          ? issueFromComicName(comic, metadata)
+          : fullMetadataValue(value)
+      }))
   };
 }

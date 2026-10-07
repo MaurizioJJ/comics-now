@@ -162,6 +162,7 @@ async function openComicMetadata(comic) {
   if (viewModel.allMetadata.length) {
     const details = document.createElement('details');
     details.className = 'comic-metadata-all';
+    details.open = true;
     details.appendChild(metadataElement('summary', '', 'Full ComicInfo metadata'));
     const list = metadataElement('dl', 'comic-metadata-list');
     for (const item of viewModel.allMetadata) list.append(metadataElement('dt', '', item.key), metadataElement('dd', '', item.value));

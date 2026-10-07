@@ -34,4 +34,22 @@ describe('comic metadata presentation model', () => {
       title: 'Untitled.cbz', credits: [], facts: [], sections: [], allMetadata: []
     });
   });
+
+  test('uses the T-number in the filename as the issue when ComicInfo Number is wrong', () => {
+    const model = createComicMetadataViewModel({
+      name: '1940 - Et Si La France Avait Continué La Guerre - T01 - Le Grand Déménagement.cbz',
+      metadata: {
+        Title: '1940 - Et Si La France Avait Continué La Guerre - T01 - Le Grand Déménagement',
+        Number: '1940',
+        Genre: 'Alternate history',
+        Pages: { Page: [{ Image: '0001.jpg', Type: 'FrontCover' }] },
+        'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance'
+      }
+    });
+
+    expect(model.facts.find(fact => fact.label === 'Issue').value).toBe('1');
+    expect(model.allMetadata.find(item => item.key === 'Number').value).toBe('1');
+    expect(model.allMetadata.find(item => item.key === 'Pages').value).toContain('FrontCover');
+    expect(model.allMetadata.some(item => item.key.startsWith('xmlns'))).toBe(false);
+  });
 });
