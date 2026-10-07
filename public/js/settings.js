@@ -1,5 +1,6 @@
 import {
   state,
+  escapeHtml,
   getRelativePath,
   settingsModal,
   settingsTabDevices,
@@ -132,20 +133,55 @@ async function refreshLibraryFolders() {
       });
     }
 
-    list.innerHTML = data.libraries.map(lib => `
-      <div class="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 hover:border-purple-500/30 transition-all group">
+    list.innerHTML = data.libraries.map((lib, index) => `
+      <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 hover:border-purple-500/30 transition-all group">
+      <div class="flex items-center justify-between">
         <div class="flex items-center min-w-0 flex-1">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3 text-purple-400 opacity-70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           <div class="min-w-0 flex-1">
-            <div class="text-sm truncate text-gray-200" title="${lib.path}">${lib.path}</div>
+            <div class="text-sm truncate text-gray-200" title="${escapeHtml(lib.path)}">${escapeHtml(lib.path)}</div>
             <div class="text-[10px] uppercase tracking-wider text-gray-500 font-bold">${lib.hierarchyMode === 'folder' ? 'Folder Mode' : 'Metadata Mode'}</div>
           </div>
         </div>
-        <button class="remove-library-btn text-gray-500 hover:text-red-400 font-bold px-2 transition-colors flex-shrink-0" data-path="${lib.path}" title="Remove Library">&times;</button>
+        <button class="remove-library-btn text-gray-500 hover:text-red-400 font-bold px-2 transition-colors flex-shrink-0" data-path="${escapeHtml(lib.path)}" title="Remove Library">&times;</button>
+      </div>
+      <label class="block text-sm text-gray-200 mt-3">Excluded folders
+        <textarea class="excluded-folders-input block w-full bg-gray-900 border border-gray-600 rounded p-2 mt-1 text-sm" rows="3" placeholder="Archive/Old&#10;Private">${escapeHtml((lib.excludedFolders || []).join('\n'))}</textarea>
+      </label>
+      <p class="text-xs text-gray-400 mt-1">One relative folder per line, including all subfolders. Files and reading progress are kept. Clear to restore; run a full scan to discover new comics.</p>
+      <button class="save-exclusions-btn text-sm text-purple-300 mt-2" data-index="${index}">Save exclusions</button>
+      <span class="exclusions-status text-xs text-gray-300 ml-2" role="status"></span>
       </div>
     `).join('') || '<p class="text-sm text-gray-500 italic">No library folders added.</p>';
+
+    list.querySelectorAll('.save-exclusions-btn').forEach(button => {
+      button.addEventListener('click', async () => {
+        const card = button.parentElement;
+        const input = card.querySelector('.excluded-folders-input');
+        const status = card.querySelector('.exclusions-status');
+        button.disabled = true;
+        status.textContent = 'Saving…';
+        try {
+          const response = await fetch(`${global.API_BASE_URL}/api/v1/admin/library-exclusions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: data.libraries[Number(button.dataset.index)].path, excludedFolders: input.value.split('\n').map(value => value.trim()).filter(Boolean) })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.message || 'Failed to save exclusions');
+          input.value = result.excludedFolders.join('\n');
+          status.textContent = 'Saved';
+          if (typeof global.fetchLibraryFromServer === 'function') await global.fetchLibraryFromServer();
+          else if (typeof global.fetchLibrary === 'function') await global.fetchLibrary();
+          if (global.currentView === 'folder' && typeof global.showFolderView === 'function') await global.showFolderView(global.currentFolderPath, { force: true });
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
 
     // Add event listeners for remove buttons
     list.querySelectorAll('.remove-library-btn').forEach(btn => {
@@ -158,7 +194,7 @@ async function refreshLibraryFolders() {
     });
   } catch (err) {
     console.error(err);
-    list.innerHTML = `<p class="text-sm text-red-500">Error: ${err.message}</p>`;
+    list.innerHTML = `<p class="text-sm text-red-500">Error: ${escapeHtml(err.message)}</p>`;
   }
 }
 

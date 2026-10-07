@@ -59,6 +59,7 @@ async function scanLibrary(force = false) {
   let subDirScanErrors = 0;
 
   const walkDir = async (dir, libraryMode, libraryRootPath) => {
+    if (require('../config').isPathExcluded(dir)) return;
     if (!fs.existsSync(dir)) {
       log('ERROR', 'SCAN', `Missing dir: ${dir}`);
       subDirScanErrors++;
@@ -100,6 +101,7 @@ async function scanLibrary(force = false) {
     await pMap(files, async (file) => {
       if (file.startsWith('.')) return;
       let filePath = path.join(dir, file);
+      if (require('../config').isPathExcluded(filePath)) return;
       let wasConverted = false;
       let stats;
       try {
@@ -339,6 +341,7 @@ async function scanLibrary(force = false) {
       log('ERROR', 'SCAN', `Aborting stale-comic cleanup: ${unreachableTopDirs.length} top-level dir(s) unreachable, ${subDirScanErrors} subfolder error(s). Would have deleted ${toDelete.length} comics.`);
     } else {
       for (const p of toDelete) {
+        if (require('../config').isPathExcluded(p)) continue;
         // Critical safeguard: verify file is actually gone from filesystem before deleting from DB
         if (fs.existsSync(p)) {
           log('WARN', 'SCAN', `Safeguard: preserving comic that exists on disk but was missed in scan: ${path.basename(p)}`);
@@ -375,6 +378,7 @@ async function scanLibrary(force = false) {
         "SELECT id, path, thumbnailPath FROM comics WHERE thumbnailPath IS NULL OR thumbnailPath = ''"
       );
       for (const item of missingThumbs) {
+        if (require('../config').isPathExcluded(item.path)) continue;
         if (fs.existsSync(item.path)) {
           const gen = await generateThumbnail(item.path);
           if (gen) {

@@ -1,6 +1,90 @@
 const fs = require('fs');
 const path = require('path');
+const { isPathExcluded } = require('../../config');
 const { isPathSafe: _isPathSafe } = require('../../utils');
+
+const CORE_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' }, { value: 'title', label: 'Title' },
+  { value: 'series', label: 'Series' }, { value: 'publisher', label: 'Publisher' },
+  { value: 'language', label: 'Language' }, { value: 'year', label: 'Publication year' },
+  { value: 'writer', label: 'Text author' }, { value: 'penciller', label: 'Drawing artist' },
+  { value: 'tags', label: 'Tags' }, { value: 'characters', label: 'Characters' }
+];
+const COMICINFO_SEARCH_TAGS = [
+  'Count', 'Volume', 'Summary', 'Notes', 'Month', 'Day', 'Inker', 'Colorist', 'Letterer',
+  'CoverArtist', 'Editor', 'Genre', 'Web', 'PageCount', 'Format', 'BlackAndWhite',
+  'AgeRating', 'Teams', 'Locations', 'ScanInformation', 'SeriesGroup', 'StoryArc', 'CoverDate', 'StoreDate'
+];
+const SEARCH_FIELD_ALIASES = {
+  title: ['Title'], series: ['Series'], publisher: ['Publisher'],
+  year: ['Year', 'StartYear', 'PublicationDate'], writer: ['Writer', 'Authors', 'Author'],
+  penciller: ['Penciller', 'Pencil', 'Artist'], tags: ['Tags'], characters: ['Characters'],
+  language: ['LanguageISO', 'Language']
+};
+
+function metadataText(value) {
+  if (Array.isArray(value)) return value.map(metadataText).filter(Boolean).join(' ');
+  if (value && typeof value === 'object') return Object.values(value).map(metadataText).filter(Boolean).join(' ');
+  return value == null ? '' : String(value);
+}
+
+function searchQueryVariants(field, query) {
+  if (field !== 'language') return [query];
+  const value = query.trim().toLocaleLowerCase();
+  if (['french', 'français', 'francais'].includes(value)) return [query, 'fre', 'fra'];
+  if (value === 'english') return [query, 'eng'];
+  if (value === 'spanish' || value === 'español') return [query, 'spa'];
+  return [query];
+}
+
+function matchesSearchField(comic, metadata, field, query) {
+  const needles = searchQueryVariants(field, String(query)).map(value => value.toLocaleLowerCase());
+  if (field === 'all') return [comic.name, comic.series, comic.publisher, metadata].some(value => needles.some(needle => metadataText(value).toLocaleLowerCase().includes(needle)));
+  const coreValues = {
+    title: [comic.name, metadata.Title, metadata.title],
+    series: [comic.series, metadata.Series, metadata.series],
+    publisher: [comic.publisher, metadata.Publisher, metadata.publisher]
+  };
+  if (Object.hasOwn(coreValues, field)) return coreValues[field].some(value => needles.some(needle => metadataText(value).toLocaleLowerCase().includes(needle)));
+  const requestedKey = field.startsWith('metadata:') ? field.slice('metadata:'.length) : field;
+  const aliases = SEARCH_FIELD_ALIASES[field] || [requestedKey];
+  const accepted = new Set(aliases.map(key => key.toLocaleLowerCase()));
+  return Object.entries(metadata).some(([key, value]) =>
+    (accepted.has(key.toLocaleLowerCase()) || (field.startsWith('metadata:') && key.toLocaleLowerCase() === requestedKey.toLocaleLowerCase())) &&
+    needles.some(needle => metadataText(value).toLocaleLowerCase().includes(needle))
+  );
+}
+
+function normalizeSearchFilters(rawFilters) {
+  if (!rawFilters) return {};
+  let filters = rawFilters;
+  if (typeof filters === 'string') {
+    try { filters = JSON.parse(filters); } catch { return {}; }
+  }
+  if (!filters || typeof filters !== 'object' || Array.isArray(filters)) return {};
+  return Object.fromEntries(Object.entries(filters)
+    .filter(([field, value]) => typeof field === 'string' && typeof value === 'string' && value.trim())
+    .slice(0, 50).map(([field, value]) => [field, value.trim()]));
+}
+
+function searchFieldsForMetadataRows(rows) {
+  const aliases = new Set(Object.values(SEARCH_FIELD_ALIASES).flat().map(key => key.toLocaleLowerCase()));
+  const fields = new Map(CORE_SEARCH_FIELDS.map(field => [field.value, field]));
+  for (const key of COMICINFO_SEARCH_TAGS) {
+    if (!aliases.has(key.toLocaleLowerCase())) fields.set(`metadata:${key}`, { value: `metadata:${key}`, label: key.replace(/([a-z])([A-Z])/g, '$1 $2') });
+  }
+  for (const row of rows) {
+    let metadata;
+    try { metadata = JSON.parse(row.metadata || '{}'); } catch { metadata = {}; }
+    for (const key of Object.keys(metadata)) {
+      const value = `metadata:${key}`;
+      if (!aliases.has(key.toLocaleLowerCase()) && ![...fields.keys()].some(field => field.toLocaleLowerCase() === value.toLocaleLowerCase())) {
+        fields.set(value, { value, label: key.replace(/([a-z])([A-Z])/g, '$1 $2') });
+      }
+    }
+  }
+  return [...fields.values()];
+}
 
 module.exports = function attach(router, deps) {
   const {
@@ -29,6 +113,7 @@ module.exports = function attach(router, deps) {
    * or if it's an ancestor of a resource they have access to.
    */
   async function checkPathAccess(userId, userRole, targetPath, accessList) {
+    if (isPathExcluded(targetPath)) return false;
     if (userRole === 'admin') return true;
 
     const rootFolders = getComicsDirectories();
@@ -79,26 +164,39 @@ module.exports = function attach(router, deps) {
   router.get('/api/v1/search', requireAuth, async (req, res) => {
     log('INFO', 'LIST', 'Searching library');
     try {
-      const { query = '' } = req.query;
+      const { query = '', field: requestedField = 'all', filters: requestedFilters } = req.query;
+      const field = typeof requestedField === 'string' ? requestedField : 'all';
       const v = validateSearchQuery(query);
       if (!v.valid) {
         return res.status(400).json({ message: v.error });
       }
       const q = v.sanitized;
+      const filters = normalizeSearchFilters(requestedFilters);
+      const validatedFilters = {};
+      for (const [filterField, filterQuery] of Object.entries(filters)) {
+        const validated = validateSearchQuery(filterQuery);
+        if (validated.valid) validatedFilters[filterField] = validated.sanitized;
+      }
       const userId = req.user?.userId || 'default-user';
       const user = await dbGet('SELECT role FROM users WHERE userId = ?', [userId]);
       const userRole = user?.role || 'user';
 
-      if (!q) {
+      if (!q && Object.keys(validatedFilters).length === 0) {
         return res.json([]);
       }
 
       // 1. Optimize: Filter in database using LIKE
       const searchPattern = `%${q}%`;
-      const rows = await dbAll(
+      const rows = q ? await dbAll(
         'SELECT * FROM comics WHERE (name LIKE ? OR series LIKE ? OR publisher LIKE ? OR metadata LIKE ?)',
         [searchPattern, searchPattern, searchPattern, searchPattern]
-      );
+      ) : await dbAll('SELECT * FROM comics');
+      const matchingRows = rows.filter(row => {
+        let metadata;
+        try { metadata = JSON.parse(row.metadata || '{}'); } catch { metadata = {}; }
+        if (q && !matchesSearchField(row, metadata, field, q)) return false;
+        return Object.entries(validatedFilters).every(([filterField, filterQuery]) => matchesSearchField(row, metadata, filterField, filterQuery));
+      });
 
       // 2. Load per-user progress once
       const userProgress = await dbAll(
@@ -124,7 +222,8 @@ module.exports = function attach(router, deps) {
       );
 
       const results = [];
-      for (const r of rows) {
+      for (const r of matchingRows) {
+        if (isPathExcluded(r.path)) continue;
         // Access control: Check if user has access to this comic
         const hasAccess = await checkComicAccess(
           userId,
@@ -175,6 +274,16 @@ module.exports = function attach(router, deps) {
     } catch (e) {
       log('ERROR', 'LIST', `Search failed: ${e.message}`);
       res.json([]);
+    }
+  });
+
+  router.get('/api/v1/search/fields', requireAuth, async (req, res) => {
+    try {
+      const rows = await dbAll('SELECT metadata FROM comics');
+      res.json(searchFieldsForMetadataRows(rows));
+    } catch (e) {
+      log('ERROR', 'LIST', `Failed to list searchable metadata fields: ${e.message}`);
+      res.status(500).json({ message: 'Failed to load searchable metadata fields' });
     }
   });
 
@@ -258,6 +367,7 @@ module.exports = function attach(router, deps) {
       for (const entry of entries) {
         if (entry.name.startsWith('.')) continue;
         const fullPath = path.join(decodedPath, entry.name);
+        if (isPathExcluded(fullPath)) continue;
         if (entry.isDirectory()) {
           rawFolders.push({
             name: entry.name,

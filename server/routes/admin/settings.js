@@ -4,6 +4,14 @@
  * @param {object} deps 
  */
 module.exports = function attach(router, deps) {
+  router.post('/api/v1/admin/library-exclusions', deps.requireAdmin, (req, res) => {
+    try {
+      const excludedFolders = require('../../config').setLibraryExcludedFolders(req.body?.path, req.body?.excludedFolders);
+      res.json({ ok: true, excludedFolders });
+    } catch (error) {
+      res.status(error instanceof TypeError ? 400 : 500).json({ message: error.message });
+    }
+  });
   const {
     getLibraries,
     addLibrary,

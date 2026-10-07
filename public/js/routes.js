@@ -184,11 +184,12 @@ function registerRoutes() {
     global.router.addRoute('/search', (params, query) => {
       const q = query.get('q');
       const field = query.get('field') || 'all';
-      if (q && typeof global.showSearchView === 'function') {
-        global.showSearchView(q, field);
-      } else {
-        const results = document.getElementById('search-results-view');
-        if (results && typeof global.showView === 'function') global.showView(results);
+      let filters = {};
+      try { filters = JSON.parse(query.get('filters') || '{}'); } catch {}
+      if ((q || Object.keys(filters).length) && typeof global.showSearchView === 'function') {
+        global.showSearchView(q || '', field, false, filters);
+      } else if (typeof global.showRootFolderList === 'function') {
+        global.showRootFolderList({ force: true });
       }
     });
 

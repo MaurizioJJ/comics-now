@@ -1,8 +1,17 @@
 import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
+
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 export default defineConfig({
   root: 'public',
   base: './',
+  plugins: [{
+    name: 'comics-now-version',
+    transformIndexHtml(html) {
+      return html.replace('__APP_VERSION__', version);
+    }
+  }],
   // Disable default publicDir copying since the root itself is the 'public' directory.
   // This avoids recursive directory copies during development and build.
   publicDir: false,

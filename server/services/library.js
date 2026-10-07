@@ -48,6 +48,7 @@ async function buildLibrary(userId = 'default-user') {
   );
 
   for (const r of rows) {
+    if (require('../config').isPathExcluded(r.path)) continue;
     // Access control: Check if user has access to this comic using hierarchical access control
     // Admin has access to everything
     // For non-admin, check hierarchical access: root_folder -> publisher -> series

@@ -262,10 +262,14 @@ function initializeLibraryUIControls() {
 
   const runLibrarySearch = () => {
     const query = global.librarySearchQuery?.value?.trim();
-    if (!query) return;
+    const filters = global.getSearchFieldFilters?.() || {};
+    if (!query && !Object.keys(filters).length) {
+      global.showRootFolderList?.({ force: true });
+      return;
+    }
     const field = global.librarySearchField?.value || 'all';
     if (typeof global.showSearchView === 'function') {
-      global.showSearchView(query, field);
+      global.showSearchView(query || '', field, false, filters);
     } else {
       console.error('[search] showSearchView is not defined');
     }
@@ -297,7 +301,10 @@ function initializeLibraryUIControls() {
       if (global.librarySearchQuery) {
         global.librarySearchQuery.value = '';
       }
-      if (typeof global.showRootFolderList === 'function') {
+      const filters = global.getSearchFieldFilters?.() || {};
+      if (Object.keys(filters).length && typeof global.showSearchView === 'function') {
+        global.showSearchView('', global.librarySearchField?.value || 'all', false, filters);
+      } else if (typeof global.showRootFolderList === 'function') {
         global.showRootFolderList({ force: true });
       }
     };
@@ -428,6 +435,4 @@ if (typeof window !== 'undefined') {
   window.handleFilterClick = handleFilterClick;
   window.initializeLibraryUIControls = initializeLibraryUIControls;
 }
-
-
 

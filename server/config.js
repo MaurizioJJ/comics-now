@@ -100,14 +100,50 @@ function normalizeDirectory(dir) {
   return normalized.replace(/[\\/]+$/, '');
 }
 
+function normalizeExcludedFolders(rules) {
+  if (!Array.isArray(rules) || rules.length > 100) throw new TypeError('Use at most 100 relative folder paths');
+  return [...new Set(rules.map(rule => {
+    if (typeof rule !== 'string' || rule.length > 1024 || rule.includes('\0')) throw new TypeError('Invalid excluded folder');
+    const value = rule.trim().replace(/\\/g, '/');
+    if (!value || path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || value.split('/').includes('..')) throw new TypeError('Excluded folders must be relative paths without traversal');
+    const normalized = path.posix.normalize(value).replace(/\/+$/, '');
+    if (!normalized || normalized === '.') throw new TypeError('Cannot exclude the library root');
+    return normalized;
+  }))];
+}
+
+function setLibraryExcludedFolders(libraryPath, rules) {
+  const library = getLibraries().find(entry => entry.path === normalizeDirectory(libraryPath));
+  if (!library) throw new TypeError('Unknown library');
+  const normalized = normalizeExcludedFolders(rules);
+  const previous = library.excludedFolders;
+  library.excludedFolders = normalized;
+  if (!saveConfigToDisk()) {
+    if (previous === undefined) delete library.excludedFolders;
+    else library.excludedFolders = previous;
+    throw new Error('Failed to save library exclusions');
+  }
+  return normalized;
+}
+
+function isPathExcluded(targetPath) {
+  if (typeof targetPath !== 'string') return false;
+  const resolved = path.resolve(targetPath);
+  return getLibraries().some(library => (library.excludedFolders || []).some(folder => {
+    const excluded = path.resolve(library.path, folder);
+    return resolved === excluded || resolved.startsWith(excluded + path.sep);
+  }));
+}
+
 function sanitizeDirectories(list) {
   if (!Array.isArray(list)) return [];
   const sanitized = [];
   const seen = new Set();
-  for (const entry of list) {
+  for (let entry of list) {
     const pathValue = typeof entry === 'string' ? entry : entry.path;
     const normalized = normalizeDirectory(pathValue);
     if (normalized && !seen.has(normalized)) {
+      if (typeof entry === 'object' && entry.excludedFolders !== undefined) entry = { ...entry, excludedFolders: normalizeExcludedFolders(entry.excludedFolders) };
       sanitized.push(typeof entry === 'string' ? { path: normalized, hierarchyMode: 'metadata' } : { ...entry, path: normalized });
       seen.add(normalized);
     }
@@ -532,6 +568,8 @@ function setGeminiTermsAccepted(val, skipSave = false) {
 }
 
 module.exports = {
+  setLibraryExcludedFolders,
+  isPathExcluded,
   DEFAULT_CONFIG,
   loadConfigFromDisk,
   getConfig,
@@ -596,5 +634,3 @@ module.exports = {
   getGeminiTermsAccepted,
   setGeminiTermsAccepted
 };
-
-

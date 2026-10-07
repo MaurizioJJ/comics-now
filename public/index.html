@@ -139,6 +139,13 @@
               <div id="library-folders-list" class="space-y-2 mb-3">
                 <!-- Populated by JS -->
               </div>
+              <h5 class="text-sm font-semibold mt-5 mb-1">Excluded Folders</h5>
+              <p class="text-xs text-gray-400 mb-2">These folders and their contents stay on disk but are hidden from the library. Remove an exclusion to restore them.</p>
+              <div id="excluded-folders-list" class="space-y-2 mb-3"></div>
+              <div class="flex gap-2 mb-4">
+                <input type="text" id="new-excluded-folder-path" class="flex-1 min-w-0 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="/path/to/library/folder">
+                <button type="button" id="exclude-folder-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Exclude</button>
+              </div>
               <div class="flex flex-col gap-2">
                 <input type="text" id="new-library-path" class="w-full bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="/path/to/comics">
                 <div class="flex gap-2">
@@ -614,7 +621,7 @@
           </div>
 
           <div class="border border-gray-700 rounded-lg p-4 mb-4 bg-gray-900/50">
-            <h4 class="font-semibold text-white mb-3 text-sm">Metadata Sources (10 Available)</h4>
+            <h4 class="font-semibold text-white mb-3 text-sm">Metadata Sources (11 Available)</h4>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-sm">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" id="src-cb-comicvine" class="rounded bg-gray-700 text-blue-600">
@@ -631,6 +638,10 @@
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" id="src-cb-lcg" class="rounded bg-gray-700 text-blue-600">
                 <span>LCG</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="src-cb-bedetheque" class="rounded bg-gray-700 text-blue-600">
+                <span>Bédéthèque (French BD)</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" id="src-cb-goodreads" class="rounded bg-gray-700 text-blue-600">
@@ -1307,6 +1318,7 @@
     
 
   <div id="app" class="container mx-auto">
+    <div id="library-sticky-header">
     <!-- Stacked Riso Logo Wordmark -->
     <div class="relative mb-6">
       <div class="logo-container cursor-pointer select-none" onclick="window.goToInitialView && window.goToInitialView()">
@@ -1314,6 +1326,7 @@
           COMICS<br>
           NOW<span class="logo-exclamation">!</span>
         </h1>
+        <span class="app-version">v__APP_VERSION__</span>
       </div>
     </div>
 
@@ -1359,15 +1372,34 @@
         </div>
         <!-- Field selector - compact -->
         <select id="library-search-field" class="search-by-select bg-gray-800 text-gray-300 text-sm rounded-xl ring-1 ring-white/10 focus:outline-none cursor-pointer">
-          <option value="all">All</option>
+          <option value="all">All fields</option>
           <option value="title">Title</option>
           <option value="series">Series</option>
-          <option value="publisher">Pub.</option>
-          <option value="character">Char.</option>
+          <option value="publisher">Publisher</option>
+          <option value="language">Language</option>
+          <option value="year">Publication year</option>
+          <option value="writer">Text author</option>
+          <option value="penciller">Drawing artist</option>
+          <option value="tags">Tags</option>
+          <option value="characters">Characters</option>
         </select>
         <!-- Visually-hidden submit so the keyboard "Search" key (and Enter) reliably trigger submit -->
         <button type="submit" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">Search</button>
       </form>
+      <details id="search-per-field" class="search-field-settings">
+        <summary>Search individual fields</summary>
+        <p class="search-field-settings-hint">Each filled field is applied together. Leave the global search empty to search only these fields.</p>
+        <div id="search-per-field-inputs" class="search-per-field-inputs">
+          <span class="search-field-settings-hint">Open to load the fields in your library.</span>
+        </div>
+      </details>
+      <details id="search-field-settings" class="search-field-settings">
+        <summary>Configure searchable fields</summary>
+        <p class="search-field-settings-hint">Choose which fields appear in the search menu. “All fields” always searches every metadata value.</p>
+        <div id="search-field-options" class="search-field-options" aria-live="polite">
+          <span class="search-field-settings-hint">Open to load the ComicInfo fields in your library.</span>
+        </div>
+      </details>
     </div>
 
     <div id="filters-container" class="flex flex-col items-center mb-6 gap-2">
@@ -1395,6 +1427,7 @@
 
     <!-- Breadcrumb navigation — shown whenever drilling below root -->
     <nav id="breadcrumb" class="hidden flex items-center gap-1.5 text-sm mb-4 px-1 flex-wrap"></nav>
+    </div>
 
     <!-- Smart filter host: lives offscreen by default; JS moves it into the active view's
          `.smart-filter-mount` slot so it appears immediately under that view's title.
@@ -1940,4 +1973,3 @@
   </script>
 </body>
 </html>
-

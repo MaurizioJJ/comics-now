@@ -80,6 +80,15 @@ a separately approved build, rollback plan and live verification. If an update
 removes the need for a personal patch, retire that patch after testing rather than
 carrying a duplicate implementation indefinitely.
 
+## Personal deployment versions
+
+The version shown beside the Comics Now logo is generated from `package.json` by
+Vite. Before each deployment, increase that package version and keep the root
+`package-lock.json` version in sync. Build with `npm run build:css && npm run build`,
+then deploy the resulting `public/dist` as a new, versioned static overlay. Keep the
+prior Compose file and overlay directory intact for rollback. The server container
+version is independent; do not replace it as part of a frontend-only release.
+
 ## Automation safety
 
 GitHub Actions are disabled for this fork. The inherited workflows target the
@@ -113,3 +122,20 @@ and permissions. Publishing personal images must target the personal namespace.
 - Reversibility: source changes can be reverted on `personal`. The installed NAS
   version and its existing rollback remain untouched; a future image deployment
   must retain its previous image and configuration before switching versions.
+# Folder exclusions (local, unreleased)
+
+In Settings, each configured library has an **Excluded folders** field. Enter one
+relative folder per line, such as `Archive/Old` or `Private`, then save. Paths are
+literal, case-sensitive names, not wildcard patterns; the entire subtree is hidden
+from browsing/search and skipped by scans. Absolute paths, traversal, the library
+root, more than 100 entries, and entries over 1024 characters are rejected.
+
+Comic files, indexed metadata, thumbnails, and reading progress are retained. Clear
+the field and save to restore indexed comics; run a full scan to discover files added
+while excluded. Exclusions apply to all users, including administrators, and are
+not a replacement for filesystem permissions. Matching is lexical: use the path
+under which a folder is indexed rather than a separate symlink alias.
+
+Rollback: clear the exclusions and save before returning to the previous app
+artifact. This change requires no database migration. No Synology deployment is
+included in the local implementation.

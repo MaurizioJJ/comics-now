@@ -1,6 +1,6 @@
 {
   "name": "comics-now",
-  "version": "1.2.3",
+  "version": "1.2.6-personal.1",
   "description": "Modern self-hosted comic book library server, smart AI guided reader, and cataloging platform.",
   "main": "server.js",
   "bin": {
@@ -28,7 +28,7 @@
     "preview": "vite preview",
     "build:css": "tailwindcss -i ./styles/tailwind.css -o ./public/tailwind.css --minify",
     "prepack": "npm run build:css && npm run build",
-    "test": "jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run test:e2e",
