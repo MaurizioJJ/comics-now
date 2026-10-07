@@ -99,4 +99,16 @@ describe('trustedIPs bypass only for demonstrably-direct requests (Issue #10)', 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
   });
+
+  test('Vite bundled assets are public while APIs remain protected', async () => {
+    const assetNext = jest.fn();
+    await extractUserFromJWT(makeReq({ path: '/assets/index-example.css' }), makeRes(), assetNext);
+    expect(assetNext).toHaveBeenCalled();
+
+    const apiNext = jest.fn();
+    const apiRes = makeRes();
+    await extractUserFromJWT(makeReq({ path: '/api/v1/comics' }), apiRes, apiNext);
+    expect(apiNext).not.toHaveBeenCalled();
+    expect(apiRes.statusCode).toBe(401);
+  });
 });
