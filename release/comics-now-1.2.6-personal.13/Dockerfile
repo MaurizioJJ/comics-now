@@ -5,8 +5,8 @@ USER root
 WORKDIR /tmp/comics-now-dependencies
 COPY package.json package-lock.json ./
 COPY scripts/check-dependencies.js ./scripts/check-dependencies.js
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential python3 \
+RUN DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 install -y --no-install-recommends build-essential python3 \
     && rm -rf /var/lib/apt/lists/* \
     && npm ci --omit=dev
 
