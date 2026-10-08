@@ -5,10 +5,10 @@ USER root
 WORKDIR /tmp/comics-now-dependencies
 COPY package.json package-lock.json ./
 COPY scripts/check-dependencies.js ./scripts/check-dependencies.js
-RUN DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 update \
-    && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 install -y --no-install-recommends build-essential python3 \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts \
+    && mkdir -p node_modules/better-sqlite3/build/Release \
+    && cp /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node node_modules/better-sqlite3/build/Release/
+RUN node -e 'const Database = require("better-sqlite3"); const db = new Database(":memory:"); if (db.prepare("SELECT 1 AS value").get().value !== 1) process.exit(1); db.close(); require("sharp"); require("onnxruntime-node"); console.log("Production native modules load successfully.")'
 
 FROM ${BASE_IMAGE}
 USER root
