@@ -49,7 +49,7 @@ describe('comic metadata presentation model', () => {
 
     expect(model.facts.find(fact => fact.label === 'Issue').value).toBe('1');
     expect(model.allMetadata.find(item => item.key === 'Number').value).toBe('1');
-    expect(model.allMetadata.find(item => item.key === 'Pages').value).toContain('FrontCover');
+    expect(model.allMetadata.some(item => item.key === 'Pages')).toBe(false);
     expect(model.allMetadata.some(item => item.key.startsWith('xmlns'))).toBe(false);
   });
 });

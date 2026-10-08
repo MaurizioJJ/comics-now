@@ -30,7 +30,7 @@ describe('comic metadata dialog', () => {
     expect(document.querySelector('.comic-metadata-empty')).toBeNull();
     expect(document.querySelector('.comic-metadata-all').open).toBe(true);
     expect(document.querySelector('.comic-metadata-all').textContent).toContain('Genre');
-    expect(document.querySelector('.comic-metadata-all').textContent).toContain('Pages');
+    expect(document.querySelector('.comic-metadata-all').textContent).not.toContain('Pages');
   });
 
   test('shows an explicit load error instead of claiming metadata is absent when the request fails', async () => {

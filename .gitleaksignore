@@ -1,0 +1,2 @@
+# One historical generic-api-key match in a test fixture was verified as a synthetic placeholder, not a credential.
+7c5645a76533d5ce8a2490b7651942e0b59c909e:tests/geminiCompliance.test.js:generic-api-key:86

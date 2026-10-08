@@ -87,7 +87,7 @@ describe('Compliance & Config Endpoints', () => {
     const handler = getRouteHandler('POST', '/api/v1/gemini/config');
     const req = {
       body: {
-        geminiApiKey: 'AIzaSyTestKey123',
+        geminiApiKey: 'test-gemini-key-fixture',
         geminiModel: 'gemini-2.5-flash-lite',
         geminiCoverMatchEnabled: true,
         geminiTermsAccepted: true

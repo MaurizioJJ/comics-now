@@ -11,6 +11,15 @@ export default defineConfig({
     transformIndexHtml(html) {
       return html.replace('__APP_VERSION__', version);
     }
+  }, {
+    name: 'comics-now-jszip-asset',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'jszip.min.js',
+        source: readFileSync(new URL('./public/jszip.min.js', import.meta.url))
+      });
+    }
   }],
   // Disable default publicDir copying since the root itself is the 'public' directory.
   // This avoids recursive directory copies during development and build.

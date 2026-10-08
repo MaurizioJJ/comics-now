@@ -103,6 +103,7 @@ export function createComicMetadataViewModel(comic = {}) {
     facts,
     sections,
     allMetadata: Object.entries(metadata)
+      .filter(([key]) => key.toLocaleLowerCase() !== 'pages')
       .filter(([key]) => !/^xmlns(?::|$)/i.test(key))
       .filter(([, value]) => displayValue(value))
       .map(([key, value]) => ({
