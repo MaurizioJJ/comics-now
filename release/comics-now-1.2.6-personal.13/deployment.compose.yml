@@ -1,6 +1,9 @@
 services:
   comics-now:
-    image: ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109
+    image: comics-now-personal:1.2.6-personal.13
+    build:
+      context: ./releases/comics-now-1.2.6-personal.13
+      dockerfile: Dockerfile
     container_name: comics-now
     user: "1026:100"
     cpu_shares: 128

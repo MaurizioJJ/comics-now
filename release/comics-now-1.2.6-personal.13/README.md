@@ -6,6 +6,16 @@ This candidate repairs generic publisher values from embedded ComicInfo and omit
 
 The production audit reports no vulnerabilities (`npm audit --omit=dev`). Full `npm audit` still reports 26 development dependency findings (21 moderate, 5 high) in Tailwind/Jest dependency chains; safe fixes require major-version changes. The Dockerfile prunes development dependencies before the runtime stage. The live `.12` container still runs `proxy-addr@2.0.7` and `sharp@0.35.4`; deployment uses a newly built image with the patched production lockfile.
 
+## Runtime image
+
+The Dockerfile derives from the exact image digest currently deployed and replaces only `/app/node_modules` using this release's locked production dependencies. This retains the existing application files and NAS overlays. Build and inspect the release image on SynoLiberec before recreating the service:
+
+```sh
+/usr/local/bin/docker-compose --project-directory /volume1/docker/comics-now -f /volume1/docker/comics-now/releases/comics-now-1.2.6-personal.13/deployment.compose.yml config
+/usr/local/bin/docker-compose --project-directory /volume1/docker/comics-now -f /volume1/docker/comics-now/releases/comics-now-1.2.6-personal.13/deployment.compose.yml build comics-now
+/usr/local/bin/docker run --rm --entrypoint node comics-now-personal:1.2.6-personal.13 -e 'for (const n of ["proxy-addr", "sharp"]) { let p=require.resolve(n), fs=require("fs"), path=require("path"); while (!fs.existsSync(path.join(path.dirname(p), "package.json"))) p=path.join(path.dirname(p), "..", "package.json"); console.log(n, require(path.join(path.dirname(p), "package.json")).version); }'
+```
+
 ## Local validation
 
 - `npm test -- --runInBand`: 76 suites, 579 tests passed.
