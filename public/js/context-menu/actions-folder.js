@@ -9,6 +9,7 @@ import {
   createReadingListItem
 } from './actions-shared.js';
 import { comicIdMap } from '../library/data.js';
+import { addGeminiFolderItem } from './actions-gemini.js';
 
 /**
  * Create and show context menu for arbitrary folders
@@ -43,6 +44,7 @@ function showFolderContextMenu(event, folderData) {
   menu.className = 'comic-context-menu';
 
   const isLocal = folderPath && String(folderPath).startsWith('device-');
+  if (!isLocal) addGeminiFolderItem(menu, allComics, `folder "${folderName}"`);
 
   // 0. Bulk Read
   if (!isLocal) {

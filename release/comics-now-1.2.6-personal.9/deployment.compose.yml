@@ -1,0 +1,60 @@
+services:
+  comics-now:
+    image: ghcr.io/comicsnow/comics-now@sha256:699e69e447dd8d94435b3a11b661fa65bee16c4a674f5dcbff5fe312b3477109
+    container_name: comics-now
+    user: "1026:100"
+    cpu_shares: 128
+    mem_limit: 768m
+    ports:
+      - "192.168.1.19:3000:3000"
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      PORT: "3000"
+      TZ: Europe/Prague
+      VIPS_CONCURRENCY: "1"
+      UV_THREADPOOL_SIZE: "2"
+    volumes:
+      - ./data:/app/data
+      - /volume1/Fumetti:/comics:ro
+      - ./releases/comics-now-1.2.6-personal.9/dist:/app/public/dist:ro
+      - ./frontend-fix-20261006/smartlists.js:/app/public/js/library/smartlists.js:ro
+      - ./metadata-refresh-20261007/server/routes/admin/comictagger.js:/app/server/routes/admin/comictagger.js:ro
+      - ./metadata-refresh-20261007/server/services/tagger.js:/app/server/services/tagger.js:ro
+      - ./gemini-fix-20261006/server/services/gemini-tagger.js:/app/server/services/gemini-tagger.js:ro
+      - ./gemini-fix-20261006/server/services/gemini-fix-targets.js:/app/server/services/gemini-fix-targets.js:ro
+      - ./releases/comics-now-1.2.6-personal.9/server.js:/app/server.js:ro
+      - ./releases/comics-now-1.2.6-personal.9/server/db.js:/app/server/db.js:ro
+      - ./releases/comics-now-1.2.6-personal.9/server/services/comicinfo-indexer.js:/app/server/services/comicinfo-indexer.js:ro
+      - ./releases/comics-now-1.2.6-personal.8/server/config.js:/app/server/config.js:ro
+      - ./releases/comics-now-1.2.6-personal.8/server/middleware/auth.js:/app/server/middleware/auth.js:ro
+      - ./releases/comics-now-1.2.6-personal.9/server/routes/admin/settings.js:/app/server/routes/admin/settings.js:ro
+      - ./releases/comics-now-1.2.6-personal.8/server/routes/user/metadata.js:/app/server/routes/user/metadata.js:ro
+      - ./releases/comics-now-1.2.6-personal.8/server/services/excluded-folders.js:/app/server/services/excluded-folders.js:ro
+      - ./releases/comics-now-1.2.6-personal.8/server/routes/user/library.js:/app/server/routes/user/library.js:ro
+      - ./folder-exclusion-20261007/server/services/excluded-folders.js:/app/server/services/excluded-folders.js:ro
+      - ./folder-exclusion-20261007/server/services/library-scan.js:/app/server/services/library-scan.js:ro
+      - ./folder-exclusion-20261007/server/services/library.js:/app/server/services/library.js:ro
+      - ./tagger-runtime-fix-20261007/tagger/app.py:/app/tagger/app.py:ro
+      - ./metadata-refresh-20261007/tagger/tagger_app/sources/bedetheque.py:/app/tagger/tagger_app/sources/bedetheque.py:ro
+      - ./folder-exclusion-20261007/tagger/tagger_app/sources/registry.py:/app/tagger/tagger_app/sources/registry.py:ro
+      - ./tagger-runtime-fix-20261007/tagger/tagger_app/core/runtime_paths.py:/app/tagger/tagger_app/core/runtime_paths.py:ro
+      - ./rate-limiter-fix-20261007/tagger/tagger_app/core/limiter.py:/app/tagger/tagger_app/core/limiter.py:ro
+      - ./folder-exclusion-20261007/tagger/tagger_app/persistence/tracking_db.py:/app/tagger/tagger_app/persistence/tracking_db.py:ro
+      - ./folder-exclusion-20261007/tagger/templates/index.html:/app/tagger/templates/index.html:ro
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/',response=>process.exit(response.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

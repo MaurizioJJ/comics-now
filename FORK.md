@@ -210,3 +210,34 @@ versioned frontend and settings/config overlays.
 - Security: the history scan still finds the same test-fixture key-like string;
   the dependency audit still reports critical `proxy-addr` and high `sharp`
   findings. Those gates remain open.
+
+## Releases 1.2.6-personal.9, .10, and .11
+
+Folder Mode comics now have a resumable ComicInfo indexer. It stores embedded
+ComicInfo fields in `comics.metadata`, preserving existing non-empty values and
+the folder-derived publisher and series columns. Each work window runs for at
+most one hour, then pauses for one hour. Progress is stored in SQLite and
+visible to administrators at `/api/v1/admin/metadata-index/status`.
+
+Deployed October 7, 2026 to SynoLiberec. The upstream image digest and prior
+tagger, exclusion, and metadata-search overlays remain in place. The .9 live
+status endpoint reported `indexing`, with 273 comics processed, 251 enriched,
+22 with no new fields, and no errors. Follow-up .10 fixes the counter labels
+and checks for the progress column before attempting the database migration.
+The one-hour window timestamp is persistent, so .10 resumes the active
+tranche after container restart. After the index completed, .11 changed
+language search to trust each comic's persisted index marker rather than
+reopening archives known to have no language value. A live single-field French
+search then returned 6,632 results, included the T01 sample, and excluded
+`100 anni di fumetto italiano`.
+
+- Validation: changed server files passed `node --check`; `git diff --check`
+  passed; `npm run build` passed with the existing Vite config-loader and JSZip
+  warnings. Jest was not run.
+- Backup and rollback: a consistent SQLite backup and previous Compose file
+  are under `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.9/`.
+  Restore `docker-compose.before.yml` and recreate the service to roll back;
+  restore `comics-now.db.before` as well to reverse metadata writes.
+- .11 rollback: restore
+  `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.11/docker-compose.before.yml`;
+  this returns to .10 and keeps the indexed metadata.

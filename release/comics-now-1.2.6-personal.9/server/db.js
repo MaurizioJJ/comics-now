@@ -117,9 +117,10 @@ async function initializeDatabase() {
 
     // Tracks whether embedded ComicInfo metadata has been indexed for a comic.
     // Folder Mode normally records path-derived display metadata only.
-    const comicColumns = await dbAll('PRAGMA table_info(comics)');
-    if (!comicColumns.some(column => column.name === 'metadataIndexedAt')) {
+    try {
       await dbRun('ALTER TABLE comics ADD COLUMN metadataIndexedAt INTEGER');
+    } catch (err) {
+      if (!/duplicate column name/i.test(err.message)) throw err;
     }
 
     // Seed default settings

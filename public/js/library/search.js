@@ -1,17 +1,16 @@
 import {
   state,
-  escapeHtml,
-  safeDirName,
   getRelativePath,
-  createLoadingMessage,
   createEmptyMessage,
   searchResultsView,
   searchResultsTitle,
   searchResultsContainer,
   rootFolderListDiv,
+  folderListViewDiv,
   publisherListDiv,
   seriesListDiv,
-  comicListDiv
+  comicListDiv,
+  smartListView
 } from '../globals.js';
 import { comicIdMap } from './data.js';
 
@@ -52,7 +51,18 @@ function localValuesForField(comic, field) {
 
 function localQueryMatches(value, field, query) {
   let needles = [String(query || '').toLocaleLowerCase()];
-  if (field === 'language' && ['french', 'français', 'francais'].includes(needles[0])) needles = [...needles, 'fre', 'fra'];
+  if (field === 'language') {
+    const aliases = {
+      french: ['fr', 'fra', 'fre'], 'français': ['fr', 'fra', 'fre'], francais: ['fr', 'fra', 'fre'],
+      fr: ['french', 'fra', 'fre'], fra: ['french', 'fr', 'fre'], fre: ['french', 'fr', 'fra'],
+      english: ['en', 'eng'], en: ['english', 'eng'], eng: ['english', 'en'],
+      spanish: ['es', 'spa'], español: ['es', 'spa'], es: ['spanish', 'spa'], spa: ['spanish', 'es'],
+      italian: ['it', 'ita'], italiano: ['it', 'ita'], it: ['italian', 'ita'], ita: ['italian', 'it'],
+      german: ['de', 'deu', 'ger'], deutsch: ['de', 'deu', 'ger'], de: ['german', 'deu', 'ger'],
+      deu: ['german', 'de', 'ger'], ger: ['german', 'de', 'deu']
+    };
+    needles = [...needles, ...(aliases[needles[0]] || [])];
+  }
   const text = Array.isArray(value) ? value.join(' ') : String(value ?? '');
   return needles.some(needle => text.toLocaleLowerCase().includes(needle));
 }
@@ -273,10 +283,9 @@ export async function showSearchView(query, field, useCache = false, filters = {
   state.currentView = 'search';
   window.currentView = 'search';
   
-  if (rootFolderListDiv) rootFolderListDiv.classList.add('hidden');
-  if (publisherListDiv) publisherListDiv.classList.add('hidden');
-  if (seriesListDiv) seriesListDiv.classList.add('hidden');
-  if (comicListDiv) comicListDiv.classList.add('hidden');
+  [rootFolderListDiv, folderListViewDiv, publisherListDiv, seriesListDiv, comicListDiv, smartListView]
+    .filter(Boolean)
+    .forEach(view => view.classList.add('hidden'));
   
   if (searchResultsView) {
     searchResultsView.classList.remove('hidden');
@@ -287,6 +296,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
   }
 
   const renderResults = (comics) => {
+    if (searchResultsContainer) searchResultsContainer.setAttribute('aria-busy', 'false');
     const mode = state.searchViewMode || window.searchViewMode || 'list';
     if (mode === 'folders') {
       renderSearchResultsAsFolders(comics);
@@ -304,7 +314,12 @@ export async function showSearchView(query, field, useCache = false, filters = {
   }
 
   if (searchResultsContainer) {
-    searchResultsContainer.innerHTML = createLoadingMessage('Searching...');
+    searchResultsContainer.setAttribute('aria-busy', 'true');
+    searchResultsContainer.innerHTML = `
+      <div role="status" aria-live="polite" class="col-span-full flex items-center justify-center gap-3 py-12 text-gray-300">
+        <span class="h-8 w-8 rounded-full border-4 border-gray-600 border-t-red-500 animate-spin" aria-hidden="true"></span>
+        <span>Searching comics…</span>
+      </div>`;
   }
 
   if (!navigator.onLine) {
@@ -313,6 +328,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
     window.lastSearchResults = comics;
     if (comics.length === 0) {
       if (searchResultsContainer) {
+        searchResultsContainer.setAttribute('aria-busy', 'false');
         searchResultsContainer.innerHTML = createEmptyMessage('No results found.');
       }
       return;
@@ -331,6 +347,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
     
     if (comics.length === 0) {
       if (searchResultsContainer) {
+        searchResultsContainer.setAttribute('aria-busy', 'false');
         searchResultsContainer.innerHTML = createEmptyMessage('No results found.');
       }
       return;
@@ -340,6 +357,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
   } catch (error) {
     console.error('[search] Error:', error);
     if (searchResultsContainer) {
+      searchResultsContainer.setAttribute('aria-busy', 'false');
       searchResultsContainer.innerHTML = '<div class="text-red-400">Search failed.</div>';
     }
   }
@@ -348,65 +366,53 @@ export async function showSearchView(query, field, useCache = false, filters = {
 export function renderSearchResultsAsFolders(comics) {
   if (!searchResultsContainer) return;
   searchResultsContainer.innerHTML = '';
-  
-  // Group comics by Publisher
-  const publishers = {};
-  comics.forEach(comic => {
-    const pub = comic.publisher || 'Unknown';
-    if (!publishers[pub]) publishers[pub] = [];
-    publishers[pub].push(comic);
-  });
 
-  const sortedPublishers = Object.keys(publishers).sort();
-  
-  sortedPublishers.forEach(pubName => {
-    const pubComics = publishers[pubName];
-    const card = document.createElement('div');
-    card.className = 'publisher-card bg-gray-800 rounded-lg shadow-lg cursor-pointer p-4 border border-gray-700/50 hover:border-purple-500/50 transition-all duration-300 group';
-    
-    // Group by series within publisher to get counts
-    const series = {};
-    pubComics.forEach(c => {
-      const s = c.series || 'Unknown';
-      if (!series[s]) series[s] = [];
-      series[s].push(c);
-    });
-    
-    const seriesCount = Object.keys(series).length;
-    const comicCount = pubComics.length;
-
-    card.innerHTML = `
-      <div class="relative h-48 w-full bg-gray-700 rounded-lg overflow-hidden flex items-center justify-center p-4">
-         <div class="text-4xl font-bold text-gray-500 opacity-20 select-none">${pubName.charAt(0).toUpperCase()}</div>
-         <div class="absolute inset-0 flex items-center justify-center">
-            <span class="text-gray-400 font-bold">${pubName}</span>
-         </div>
-      </div>
-      <h3 class="text-lg font-semibold mt-4 text-center text-white truncate w-full px-2">${escapeHtml(pubName)}</h3>
-      <p class="mt-1 text-xs text-gray-400 text-center">${seriesCount} ${seriesCount === 1 ? 'Series' : 'Series'} (${comicCount} ${comicCount === 1 ? 'comic' : 'comics'})</p>
-    `;
-    
-    card.addEventListener('click', () => {
-      // For simplicity, just show the comics of this publisher in a flat list for now
-      const renderComicCards = state.renderComicCards || window.renderComicCards;
-      if (typeof renderComicCards === 'function') {
-        renderComicCards(pubComics, 'search');
-      }
-      if (searchResultsTitle) {
-        searchResultsTitle.textContent = `Search Results: ${pubName}`;
-      }
-      // Add back button to return to publisher list
-      const backBtn = document.createElement('button');
-      backBtn.className = 'pill-button bg-gray-700 hover:bg-gray-600 text-white transition-colors mb-4 ml-4';
-      backBtn.textContent = '← Back to Publishers';
-      backBtn.addEventListener('click', () => {
-          showSearchView(state.lastSearchQuery, state.lastSearchField, true);
+  const groups = new Map();
+  for (const comic of comics || []) {
+    const comicPath = String(comic.path || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    const separator = comicPath.lastIndexOf('/');
+    const folderPath = separator >= 0 ? comicPath.slice(0, separator) : '';
+    if (!folderPath) continue;
+    if (!groups.has(folderPath)) {
+      const rootNames = state.LIBRARY_NAMES || window.LIBRARY_NAMES || {};
+      const folderName = folderPath.split('/').pop();
+      groups.set(folderPath, {
+        path: folderPath,
+        name: rootNames[folderPath] || folderName || 'Library',
+        comics: []
       });
-      searchResultsContainer.prepend(backBtn);
+    }
+    groups.get(folderPath).comics.push(comic);
+  }
+
+  const sortedFolders = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  if (!sortedFolders.length) {
+    searchResultsContainer.innerHTML = createEmptyMessage('No matching comic folders found.');
+    return;
+  }
+
+  for (const folder of sortedFolders) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.dataset.searchFolderPath = folder.path;
+    card.className = 'search-folder-result-card bg-gray-800 rounded-lg shadow-lg cursor-pointer p-4 border border-gray-700/50 hover:border-purple-500/50 transition-all duration-300 group text-left';
+
+    const icon = document.createElement('div');
+    icon.className = 'h-40 w-full bg-gray-900 rounded-lg flex items-center justify-center text-red-400';
+    icon.innerHTML = '<svg class="h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>';
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-semibold mt-4 text-center text-white truncate w-full px-2';
+    title.textContent = folder.name;
+    const count = document.createElement('p');
+    count.className = 'mt-1 text-xs text-gray-400 text-center';
+    count.textContent = `${folder.comics.length} matching ${folder.comics.length === 1 ? 'comic' : 'comics'}`;
+    card.append(icon, title, count);
+    card.addEventListener('click', () => {
+      const openFolder = state.showFolderView || window.showFolderView;
+      if (typeof openFolder === 'function') openFolder(folder.path);
     });
-    
     searchResultsContainer.appendChild(card);
-  });
+  }
 }
 
 export function searchLibraryLocally(query, field, filters = {}) {

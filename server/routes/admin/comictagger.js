@@ -53,6 +53,44 @@ module.exports = function attach(router, deps) {
     getScanLogDetail,
     clearEnhancedTracking
   } = deps;
+  const dbAll = deps.dbAll;
+  const getComicsDirectories = deps.getComicsDirectories;
+
+  router.post('/api/v1/tag-comics-now/gemini-fix', async (req, res) => {
+    try {
+      const { resolveGeminiFixTargets } = require('../../services/gemini-fix-targets');
+      const { comicIds, folderPath } = req.body || {};
+      const [rows, geminiRows] = await Promise.all([
+        Array.isArray(comicIds) && comicIds.length > 0 && typeof dbAll === 'function'
+          ? dbAll(`SELECT id, path FROM comics WHERE id IN (${comicIds.map(() => '?').join(',')})`, comicIds)
+          : Promise.resolve([]),
+        typeof dbAll === 'function'
+          ? dbAll("SELECT key, value FROM settings WHERE key IN ('geminiApiKey','geminiCoverMatchEnabled','geminiTermsAccepted','geminiCoverDailyCap')")
+          : Promise.resolve([])
+      ]);
+      const settings = Object.fromEntries((geminiRows || []).map(row => [row.key, row.value]));
+      const readBoolean = value => value === true || value === 'true' || value === '"true"';
+      let apiKey = settings.geminiApiKey || deps.config?.geminiApiKey || process.env.GEMINI_API_KEY || '';
+      try { apiKey = JSON.parse(apiKey); } catch (_) {}
+      const enabled = process.env.GEMINI_COVER_MATCH_ENABLED !== undefined
+        ? ['true', '1'].includes(process.env.GEMINI_COVER_MATCH_ENABLED.toLowerCase())
+        : settings.geminiCoverMatchEnabled === undefined
+        ? deps.config?.geminiCoverMatchEnabled !== false
+        : readBoolean(settings.geminiCoverMatchEnabled);
+      const termsAccepted = settings.geminiTermsAccepted === undefined
+        ? deps.config?.geminiTermsAccepted === true
+        : readBoolean(settings.geminiTermsAccepted);
+      if (!apiKey || !enabled || !termsAccepted) {
+        return res.status(412).json({ ok: false, message: 'Configure Gemini, enable it, and accept its terms before running a Gemini fix.' });
+      }
+      const paths = resolveGeminiFixTargets({ comicIds, folderPath, rows, roots: getComicsDirectories ? getComicsDirectories() : [] });
+      if (isTaggerRunning && isTaggerRunning()) return res.status(409).json({ ok: false, message: 'Tagger is already running.' });
+      runComicTagger({ mode: 'force', paths, geminiRequired: true });
+      return res.status(202).json({ ok: true, count: paths.length });
+    } catch (error) {
+      return res.status(400).json({ ok: false, message: error.message || 'Gemini fix could not be started.' });
+    }
+  });
 
   // SSE Log Stream
   router.get('/api/v1/tag-comics-now/stream', (req, res) => {

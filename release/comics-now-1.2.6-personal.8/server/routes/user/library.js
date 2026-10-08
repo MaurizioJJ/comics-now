@@ -7,10 +7,6 @@ const metadataService = require('../../services/metadata');
 const archiveLanguageCache = new Map();
 
 async function getSearchLanguageMetadata(row, metadata) {
-  // The background indexer has already checked this archive, including the
-  // case where it contains no language field. Trust the persisted result so
-  // each language search does not reopen every such archive.
-  if (row.metadataIndexedAt !== null && row.metadataIndexedAt !== undefined) return metadata;
   if (metadataText(metadata.LanguageISO || metadata.Language)) return metadata;
   const cacheKey = `${row.path}\0${row.updatedAt || ''}`;
   if (!archiveLanguageCache.has(cacheKey)) {

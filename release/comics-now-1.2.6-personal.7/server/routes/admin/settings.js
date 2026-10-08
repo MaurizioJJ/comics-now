@@ -1,18 +1,9 @@
 /**
  * Admin Settings Routes
- * @param {object} router 
- * @param {object} deps 
+ * @param {object} router
+ * @param {object} deps
  */
 module.exports = function attach(router, deps) {
-  router.get('/api/v1/admin/metadata-index/status', deps.requireAdmin, async (_req, res) => {
-    try {
-      const status = await require('../../services/comicinfo-indexer').getStatus();
-      res.json({ ok: true, ...status });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   router.post('/api/v1/admin/library-exclusions', deps.requireAdmin, (req, res) => {
     try {
       const exclusions = require('../../config').setLibraryExclusions(req.body?.path, {

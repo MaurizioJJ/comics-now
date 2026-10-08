@@ -2,41 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { isPathExcluded } = require('../../config');
 const { isPathSafe: _isPathSafe } = require('../../utils');
-const metadataService = require('../../services/metadata');
-
-const archiveLanguageCache = new Map();
-
-async function getSearchLanguageMetadata(row, metadata) {
-  // The background indexer has already checked this archive, including the
-  // case where it contains no language field. Trust the persisted result so
-  // each language search does not reopen every such archive.
-  if (row.metadataIndexedAt !== null && row.metadataIndexedAt !== undefined) return metadata;
-  if (metadataText(metadata.LanguageISO || metadata.Language)) return metadata;
-  const cacheKey = `${row.path}\0${row.updatedAt || ''}`;
-  if (!archiveLanguageCache.has(cacheKey)) {
-    archiveLanguageCache.set(cacheKey, Promise.resolve()
-      .then(() => metadataService.getComicInfoFromArchive(row.path))
-      .then(info => {
-        const language = info?.LanguageISO || info?.Language;
-        return language ? { LanguageISO: language } : {};
-      })
-      .catch(() => ({})));
-  }
-  const archiveMetadata = await archiveLanguageCache.get(cacheKey);
-  return Object.keys(archiveMetadata).length ? { ...metadata, ...archiveMetadata } : metadata;
-}
-
-async function mapWithConcurrency(items, mapper, concurrency = 5) {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex++;
-      results[index] = await mapper(items[index]);
-    }
-  }));
-  return results;
-}
 
 const CORE_SEARCH_FIELDS = [
   { value: 'all', label: 'All fields' }, { value: 'title', label: 'Title' },
@@ -222,13 +187,6 @@ module.exports = function attach(router, deps) {
       const userId = req.user?.userId || 'default-user';
       const user = await dbGet('SELECT role FROM users WHERE userId = ?', [userId]);
       const userRole = user?.role || 'user';
-      const directories = getComicsDirectories();
-      const accessList = userRole === 'admin' ? [] : await dbAll(
-        `SELECT accessType, accessValue, direct_access, child_access
-         FROM user_library_access
-         WHERE userId = ? AND (direct_access = 1 OR child_access = 1)`,
-        [userId]
-      );
 
       if (!q && Object.keys(validatedFilters).length === 0) {
         return res.json([]);
@@ -236,28 +194,16 @@ module.exports = function attach(router, deps) {
 
       // 1. Optimize: Filter in database using LIKE
       const searchPattern = `%${q}%`;
-      const needsArchiveLanguage = (q && field === 'language') || Object.hasOwn(validatedFilters, 'language');
-      const rows = q && !needsArchiveLanguage ? await dbAll(
+      const rows = q ? await dbAll(
         'SELECT * FROM comics WHERE (name LIKE ? OR series LIKE ? OR publisher LIKE ? OR metadata LIKE ?)',
         [searchPattern, searchPattern, searchPattern, searchPattern]
       ) : await dbAll('SELECT * FROM comics');
-      const matchingRows = (await mapWithConcurrency(rows, async row => {
-        if (needsArchiveLanguage && isPathExcluded(row.path)) return false;
-        if (needsArchiveLanguage && userRole !== 'admin') {
-          const hasAccess = await checkComicAccess(
-            userId, userRole, row.path, row.publisher, row.series, directories, row.id, accessList
-          );
-          if (!hasAccess) return false;
-          row.searchHasAccess = true;
-        }
+      const matchingRows = rows.filter(row => {
         let metadata;
         try { metadata = JSON.parse(row.metadata || '{}'); } catch { metadata = {}; }
-        if (needsArchiveLanguage) metadata = await getSearchLanguageMetadata(row, metadata);
         if (q && !matchesSearchField(row, metadata, field, q)) return false;
-        const matchesFilters = Object.entries(validatedFilters).every(([filterField, filterQuery]) => matchesSearchField(row, metadata, filterField, filterQuery));
-        if (matchesFilters) row.searchMetadata = metadata;
-        return matchesFilters;
-      })).map((matches, index) => matches ? rows[index] : null).filter(Boolean);
+        return Object.entries(validatedFilters).every(([filterField, filterQuery]) => matchesSearchField(row, metadata, filterField, filterQuery));
+      });
 
       // 2. Load per-user progress once
       const userProgress = await dbAll(
@@ -272,19 +218,36 @@ module.exports = function attach(router, deps) {
 
       // 3. Load user reading preferences using helper
       const prefMaps = await getReadingPrefMaps(userId);
+      const directories = getComicsDirectories();
+
+      // 4. Load access list for checkComicAccess
+      const accessList = userRole === 'admin' ? [] : await dbAll(
+        `SELECT accessType, accessValue, direct_access, child_access
+         FROM user_library_access
+         WHERE userId = ? AND (direct_access = 1 OR child_access = 1)`,
+        [userId]
+      );
+
       const results = [];
       for (const r of matchingRows) {
         if (isPathExcluded(r.path)) continue;
         // Access control: Check if user has access to this comic
-        const hasAccess = r.searchHasAccess || await checkComicAccess(
-          userId, userRole, r.path, r.publisher, r.series, directories, r.id, accessList
+        const hasAccess = await checkComicAccess(
+          userId,
+          userRole,
+          r.path,
+          r.publisher,
+          r.series,
+          directories,
+          r.id,
+          accessList
         );
 
         if (!hasAccess) {
           continue;
         }
 
-        const meta = r.searchMetadata || (() => { try { return JSON.parse(r.metadata || '{}'); } catch { return {}; } })();
+        const meta = (() => { try { return JSON.parse(r.metadata || '{}'); } catch { return {}; } })();
         
         // Resolve reading modes using hierarchical helper
         const { mangaMode, continuousMode } = resolveReadingModes(r.id, r.series, r.publisher, r.path, prefMaps, directories);

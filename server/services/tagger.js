@@ -241,7 +241,10 @@ async function runComicTagger(options = {}) {
       return;
     }
 
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    const requestedPaths = Array.isArray(options.paths) ? new Set(options.paths.map(p => path.resolve(p))) : null;
+    const entries = requestedPaths
+      ? await Promise.all([...requestedPaths].map(async filePath => ({ name: filePath, isFile: () => true, fullPath: filePath })))
+      : await fs.promises.readdir(dir, { withFileTypes: true });
     const allowedFormats = config.allowed_formats || 'cbz';
     const comicFiles = entries.filter(e => {
       if (!e.isFile()) return false;
@@ -290,7 +293,7 @@ async function runComicTagger(options = {}) {
       }
       fileIndex++;
       const itemStart = Date.now();
-      const filePath = path.join(dir, entry.name);
+      const filePath = entry.fullPath || path.join(dir, entry.name);
       const isCbr = path.extname(entry.name).toLowerCase() === '.cbr';
       const id = require('../utils').createId(filePath);
 
@@ -421,6 +424,7 @@ async function runComicTagger(options = {}) {
             upper_threshold: upperThreshold,
             enabled_sources: enabledSources,
             force_reprocess: forceReprocess,
+            gemini_required: options.geminiRequired === true,
             publisher_codex: publisherCodex
           },
           ctAbortController ? ctAbortController.signal : undefined,

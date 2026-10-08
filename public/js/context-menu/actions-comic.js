@@ -1,6 +1,7 @@
 import { state, encodePath } from '../globals.js';
 import { positionContextMenu, attachCloseHandler, closeContextMenu } from './menu-builder.js';
 import { createComicMetadataViewModel } from './metadata-view-model.mjs';
+import { addGeminiSelectionItem } from './actions-gemini.js';
 import {
   createDownloadItem,
   createReadStatusItem,
@@ -195,6 +196,7 @@ function showComicContextMenu(event, comic) {
 
   const menu = document.createElement('div');
   menu.className = 'comic-context-menu';
+  addGeminiSelectionItem(menu, comic);
 
   const isLocal = comic.handle || comic.file || (comic.id && String(comic.id).startsWith('device-'));
 

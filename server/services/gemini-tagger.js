@@ -139,6 +139,7 @@ function installTaggerHook(ctx) {
 
     const localCoverPath = await resolveLocalCover(filePath);
     if (!localCoverPath) {
+      if (reqBody.gemini_required) throw new Error('Gemini fix requires a readable local cover.');
       if (controller && textEncoder) {
         controller.enqueue(textEncoder.encode(`data: ${JSON.stringify({
           type: 'progress',
@@ -158,6 +159,7 @@ function installTaggerHook(ctx) {
         model: config.model
       });
     } catch (err) {
+      if (reqBody.gemini_required) throw err;
       if (controller && textEncoder) {
         controller.enqueue(textEncoder.encode(`data: ${JSON.stringify({
           type: 'progress',
@@ -360,6 +362,7 @@ function installTaggerHook(ctx) {
 
     // If Gemini is disabled, has no API key, or terms have not been accepted, pass through completely unaltered
     if (!config.enabled || !config.apiKey || !config.termsAccepted) {
+      if (reqBody.gemini_required) return new Response(JSON.stringify({ error: 'Gemini is disabled or not configured.' }), { status: 412 });
       return originalFetch(input, init);
     }
 
@@ -367,6 +370,7 @@ function installTaggerHook(ctx) {
     const quota = await checkAndIncrementQuota(config.dailyCap);
     if (!quota.allowed) {
       logger('WARN', 'TAGGER_HOOK', `Daily Gemini quota reached (${quota.count}/${config.dailyCap}). Using standard tagger cover matching (pHash).`);
+      if (reqBody.gemini_required) return new Response(JSON.stringify({ error: 'Gemini daily quota is exhausted.' }), { status: 429 });
       return originalFetch(input, init);
     }
 

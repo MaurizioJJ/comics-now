@@ -1,4 +1,5 @@
 import { state } from '../globals.js';
+import { addGeminiFolderItem } from './actions-gemini.js';
 import { positionContextMenu, attachCloseHandler, closeContextMenu } from './menu-builder.js';
 import {
   createDownloadItem,
@@ -39,6 +40,7 @@ function showLibraryContextMenu(event, libraryData) {
   }
 
   const libLabel = (folderPath || '').split(/[\\\/]/).filter(Boolean).pop() || 'library';
+  addGeminiFolderItem(menu, allComics, `library "${libLabel}"`);
 
   // 0. Bulk Read
   const bulkItem = createBulkReadItem(allComics, `library "${libLabel}"`);
