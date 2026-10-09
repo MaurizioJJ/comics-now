@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.6-personal.15
+
+- Add searchable multiselect dropdowns for per-field library search filters. Multiple values within a field use OR matching; separate fields use AND matching.
+
 ## 1.2.6-personal.14
 
 - Display a single canonical `Publisher` field in the right-click ComicInfo details, preferring the capitalized key and capitalizing lowercase-only publisher values.

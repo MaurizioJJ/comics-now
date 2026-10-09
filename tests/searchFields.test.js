@@ -46,6 +46,15 @@ describe('metadata field search', () => {
     expect(result.body.map(comic => comic.id)).toEqual([1]);
   });
 
+  test('matches any selected value within a field and combines fields with AND', async () => {
+    const result = response();
+    await createRouteHarness(comics).get('/api/v1/search')({
+      query: { query: '', filters: JSON.stringify({ publisher: ['Publisher A', 'Publisher B'], language: ['French'] }) },
+      user: { userId: 'u1' }
+    }, result);
+    expect(result.body.map(comic => comic.id)).toEqual([1]);
+  });
+
   test('filters a single language field with an empty global search using French', async () => {
     const result = response();
     await createRouteHarness(comics).get('/api/v1/search')({

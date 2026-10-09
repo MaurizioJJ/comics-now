@@ -159,7 +159,7 @@ module.exports = function attach(router, deps) {
   /**
    * Security: Check if a user has access to a specific file or folder path.
    * Handles hierarchical access: root_folder -> publisher -> series.
-   * A folder is accessible if the user has direct or child access to it, 
+   * A folder is accessible if the user has direct or child access to it,
    * or if it's an ancestor of a resource they have access to.
    */
   async function checkPathAccess(userId, userRole, targetPath, accessList) {
@@ -194,7 +194,7 @@ module.exports = function attach(router, deps) {
     // Check Series access
     const serAccess = accessList.find(a => a.accessType === 'series' && a.accessValue === series);
     if (!serAccess) return false;
-    
+
     return true;
   }
 
@@ -295,7 +295,7 @@ module.exports = function attach(router, deps) {
         }
 
         const meta = r.searchMetadata || (() => { try { return JSON.parse(r.metadata || '{}'); } catch { return {}; } })();
-        
+
         // Resolve reading modes using hierarchical helper
         const { mangaMode, continuousMode } = resolveReadingModes(r.id, r.series, r.publisher, r.path, prefMaps, directories);
 
@@ -312,8 +312,8 @@ module.exports = function attach(router, deps) {
           name: r.name,
           path: redactedPath,
           thumbnailPath: r.thumbnailPath,
-          progress: { 
-            lastReadPage: userProg.lastReadPage !== undefined ? userProg.lastReadPage : (r.lastReadPage || 0), 
+          progress: {
+            lastReadPage: userProg.lastReadPage !== undefined ? userProg.lastReadPage : (r.lastReadPage || 0),
             totalPages: userProg.totalPages !== undefined ? userProg.totalPages : (r.totalPages || 0)
           },
           metadata: meta,
@@ -365,8 +365,8 @@ module.exports = function attach(router, deps) {
 
       // Handle root case
       if (!encodedPath || encodedPath === 'root') {
-        const allowedRoots = userRole === 'admin' 
-          ? directories 
+        const allowedRoots = userRole === 'admin'
+          ? directories
           : directories.filter(d => userAccessList.some(a => a.accessType === "root_folder" && a.accessValue === d));
 
         return res.json({
@@ -414,7 +414,7 @@ module.exports = function attach(router, deps) {
 
       // Read directory contents
       const entries = await fs.promises.readdir(decodedPath, { withFileTypes: true });
-      
+
       const rawFolders = [];
       const comicFiles = [];
 
@@ -454,7 +454,7 @@ module.exports = function attach(router, deps) {
       if (comicFiles.length > 0) {
         const paths = comicFiles.map(f => f.path);
         const placeholders = paths.map(() => '?').join(',');
-        
+
         const prefMaps = await getReadingPrefMaps(userId);
 
         const dbComics = await dbAll(`
@@ -471,7 +471,7 @@ module.exports = function attach(router, deps) {
         // Parallelized comic access checks
         const comicChecks = comicFiles.map(async (f) => {
           const dbComic = dbComicsMap.get(f.path);
-          
+
           if (dbComic) {
             const hasAccess = await checkComicAccess(
               userId,

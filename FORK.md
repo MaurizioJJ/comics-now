@@ -241,3 +241,28 @@ search then returned 6,632 results, included the T01 sample, and excluded
 - .11 rollback: restore
   `/volume1/docker/comics-now/backups/comics-now-1.2.6-personal.11/docker-compose.before.yml`;
   this returns to .10 and keeps the indexed metadata.
+
+## Release 1.2.6-personal.15
+
+Per-field library search now provides searchable multiselect dropdowns. Selected
+values within one field use OR matching, and separate fields combine with AND.
+The backend retains compatibility with existing string filters and also accepts
+up to 100 selected values per field. The release changes no database data.
+
+Deployed October 9, 2026 to SynoLiberec. It reuses the `.14` container image and
+overlays the `.15` frontend and library search route.
+
+- Correctness: the regression test failed before the backend change and passed
+  after it. The full Jest suite passed: 76 suites, 583 tests.
+- Static quality: `npm run build:css && npm run build`, `node --check
+  server/routes/user/library.js`, and `git diff --check` passed. CSS generation
+  reported stale Browserslist data; no lint or type-check command is configured.
+- Security: `npm audit --omit=dev` reported zero vulnerabilities. Gitleaks scanned
+  199 commits and reported no findings. No dependencies or workflow permissions
+  changed.
+- Runtime: the live page and both built assets returned HTTP 200, and the page
+  displayed `.15`. The multi-value Publisher search returned 3,255 matching
+  comics over HTTP 200. The container is running and healthy with zero restarts.
+- Rollback: restore
+  `/volume1/docker/comics-now/backups/docker-compose.pre-1.2.6-personal.15.yml`
+  and recreate the service. No database restore is needed.

@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 describe('metadata search results views', () => {
   let showSearchView;
+  let getSearchFieldFilters;
   let state;
   let resolveSearch;
 
@@ -13,7 +14,7 @@ describe('metadata search results views', () => {
       <details id="search-field-settings"><div id="search-field-options"></div></details>
       <select id="library-search-field"><option value="all">All fields</option></select>
       <input id="library-search-query"><details id="search-per-field"><div id="search-per-field-inputs"></div></details>`;
-    ({ showSearchView } = await import('../public/js/library/search.js'));
+    ({ showSearchView, getSearchFieldFilters } = await import('../public/js/library/search.js'));
     ({ state } = await import('../public/js/globals.js'));
   });
 
@@ -68,5 +69,15 @@ describe('metadata search results views', () => {
     expect(cardText).toContain('1 matching comic');
     cards[0].click();
     expect(window.showFolderView).toHaveBeenCalledWith('lib_0/Publisher/Series A');
+  });
+
+  test('collects checked values into per-field multiselect filters', () => {
+    document.getElementById('search-per-field-inputs').innerHTML = `
+      <input type="checkbox" checked data-search-field-value="publisher" value="Bonelli Editore">
+      <input type="checkbox" checked data-search-field-value="publisher" value="Marvel">
+      <input type="checkbox" checked data-search-field-value="language" value="Italian">`;
+    expect(getSearchFieldFilters()).toEqual({
+      publisher: ['Bonelli Editore', 'Marvel'], language: ['Italian']
+    });
   });
 });

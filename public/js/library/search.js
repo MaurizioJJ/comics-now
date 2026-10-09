@@ -49,6 +49,20 @@ function localValuesForField(comic, field) {
   return Object.entries(metadata).filter(([key]) => keys.includes(key.toLocaleLowerCase())).map(([, value]) => value);
 }
 
+function searchableValues(value) {
+  if (Array.isArray(value)) return value.flatMap(searchableValues);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(searchableValues);
+  return value == null ? [] : [String(value).trim()].filter(Boolean);
+}
+
+function localOptionsForField(field) {
+  const values = new Set();
+  for (const comic of comicIdMap.values()) {
+    for (const value of localValuesForField(comic, field).flatMap(searchableValues)) values.add(value);
+  }
+  return [...values].sort((a, b) => a.localeCompare(b));
+}
+
 function localQueryMatches(value, field, query) {
   let needles = [String(query || '').toLocaleLowerCase()];
   if (field === 'language') {
@@ -138,23 +152,68 @@ function initializeSearchFieldSettings() {
   updateSearchFieldOptions(select, visible);
 
   let perFieldTimer;
+  const fieldOptions = new Map();
   const renderPerFieldInputs = fields => {
     if (!perFieldInputs) return;
     const previousInputs = getSearchFieldFilters();
     const previous = Object.keys(previousInputs).length ? previousInputs : (state.lastSearchFilters || {});
     perFieldInputs.replaceChildren();
     for (const field of fields.filter(item => item.value !== 'all' && visible.has(item.value))) {
-      const label = document.createElement('label');
-      label.className = 'search-per-field-control';
-      const caption = document.createElement('span');
-      caption.textContent = field.label;
+      const details = document.createElement('details');
+      details.className = 'search-per-field-control';
+      details.dataset.searchFieldControl = field.value;
+      const summary = document.createElement('summary');
+      const selectedValues = new Set(Array.isArray(previous[field.value]) ? previous[field.value] : (previous[field.value] ? [previous[field.value]] : []));
+      const updateSummary = () => {
+        summary.textContent = selectedValues.size ? `${field.label} (${selectedValues.size} selected)` : field.label;
+      };
+      updateSummary();
       const input = document.createElement('input');
       input.type = 'search';
-      input.dataset.searchField = field.value;
-      input.value = previous[field.value] || '';
-      input.placeholder = `Search ${field.label.toLocaleLowerCase()}…`;
+      input.dataset.searchFieldSearch = field.value;
+      input.placeholder = `Find ${field.label.toLocaleLowerCase()}…`;
       input.autocomplete = 'off';
-      input.addEventListener('input', () => {
+      const choices = document.createElement('div');
+      choices.className = 'search-per-field-options';
+      const values = fieldOptions.get(field.value) || localOptionsForField(field.value);
+      fieldOptions.set(field.value, values);
+      const renderChoices = () => {
+        const query = input.value.trim().toLocaleLowerCase();
+        const matching = values.filter(value => value.toLocaleLowerCase().includes(query));
+        const filtered = matching.slice(0, 100);
+        for (const value of selectedValues) {
+          if (!filtered.includes(value)) filtered.unshift(value);
+        }
+        choices.replaceChildren();
+        for (const value of filtered) {
+          const option = document.createElement('label');
+          option.className = 'search-per-field-option';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = value;
+          checkbox.checked = selectedValues.has(value);
+          checkbox.dataset.searchFieldValue = field.value;
+          checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selectedValues.add(value);
+            else selectedValues.delete(value);
+            updateSummary();
+            scheduleSearch();
+          });
+          const text = document.createElement('span');
+          text.textContent = value;
+          option.append(checkbox, text);
+          choices.appendChild(option);
+        }
+        if (matching.length > 100) {
+          const hint = document.createElement('span');
+          hint.className = 'search-field-settings-hint';
+          hint.textContent = 'Showing the first 100 matches. Type to narrow the list.';
+          choices.appendChild(hint);
+        } else if (!filtered.length) {
+          choices.textContent = values.length ? 'No matching values.' : 'No indexed values found for this field.';
+        }
+      };
+      const scheduleSearch = () => {
         clearTimeout(perFieldTimer);
         perFieldTimer = setTimeout(() => {
           const filters = getSearchFieldFilters();
@@ -162,9 +221,11 @@ function initializeSearchFieldSettings() {
           if (query || Object.keys(filters).length) showSearchView(query, select.value, false, filters);
           else if (state.currentView === 'search') showSearchView('', 'all', false, {});
         }, 300);
-      });
-      label.append(caption, input);
-      perFieldInputs.appendChild(label);
+      };
+      input.addEventListener('input', renderChoices);
+      details.addEventListener('toggle', () => { if (details.open) renderChoices(); });
+      details.append(summary, input, choices);
+      perFieldInputs.appendChild(details);
     }
     if (!perFieldInputs.children.length) perFieldInputs.textContent = 'Select fields under Configure searchable fields to add search boxes here.';
   };
@@ -197,7 +258,7 @@ function initializeSearchFieldSettings() {
           showSearchView(queryInput?.value.trim() || '', select.value, false, getSearchFieldFilters());
         }
         if (previousField !== select.value && queryInput?.value.trim() && state.currentView === 'search') {
-          showSearchView(queryInput.value.trim(), select.value);
+          showSearchView(queryInput.value.trim(), select.value, false, getSearchFieldFilters());
         }
       });
       const text = document.createElement('span');
@@ -210,7 +271,8 @@ function initializeSearchFieldSettings() {
 
   select.addEventListener('change', () => {
     const query = queryInput?.value.trim();
-    if (query && state.currentView === 'search') showSearchView(query, select.value);
+    const filters = getSearchFieldFilters();
+    if ((query || Object.keys(filters).length) && state.currentView === 'search') showSearchView(query || '', select.value, false, filters);
   });
 }
 
@@ -229,10 +291,11 @@ export async function rerenderSearchResults() {
 }
 
 export function getSearchFieldFilters() {
-  const inputs = document.querySelectorAll('#search-per-field-inputs [data-search-field]');
-  return Object.fromEntries([...inputs]
-    .map(input => [input.dataset.searchField, input.value.trim()])
-    .filter(([, value]) => value));
+  const filters = {};
+  for (const input of document.querySelectorAll('#search-per-field-inputs [data-search-field-value]:checked')) {
+    (filters[input.dataset.searchFieldValue] ||= []).push(input.value);
+  }
+  return filters;
 }
 
 export async function showSearchView(query, field, useCache = false, filters = {}) {
@@ -426,8 +489,9 @@ export function searchLibraryLocally(query, field, filters = {}) {
     const meta = comic.metadata || {};
     const globalValues = field === 'all' ? [comic.name, comic.series, comic.publisher, ...Object.values(meta)] : localValuesForField(comic, field);
     const globalMatch = !q || globalValues.some(value => localQueryMatches(value, field, q));
-    const fieldMatches = Object.entries(filters).every(([filterField, filterQuery]) => {
-      return localValuesForField(comic, filterField).some(value => localQueryMatches(value, filterField, filterQuery));
+    const fieldMatches = Object.entries(filters).every(([filterField, filterQueries]) => {
+      const values = Array.isArray(filterQueries) ? filterQueries : [filterQueries];
+      return values.some(filterQuery => localValuesForField(comic, filterField).some(value => localQueryMatches(value, filterField, filterQuery)));
     });
     if (globalMatch && fieldMatches) {
       results.push(comic);
