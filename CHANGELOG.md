@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.6-personal.14
+
+- Display a single canonical `Publisher` field in the right-click ComicInfo details, preferring the capitalized key and capitalizing lowercase-only publisher values.
+
 ## 1.2.6-personal.13
 
 - Recover specific publishers from embedded ComicInfo when Folder Mode stored the generic `comics` label, and queue existing placeholder records for resumable re-indexing.

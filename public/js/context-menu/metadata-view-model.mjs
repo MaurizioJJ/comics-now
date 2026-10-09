@@ -72,6 +72,9 @@ export function createComicMetadataViewModel(comic = {}) {
   const metadata = comic.metadata && typeof comic.metadata === 'object' && !Array.isArray(comic.metadata)
     ? comic.metadata
     : {};
+  const publisherKey = displayValue(metadata.Publisher) ? 'Publisher'
+    : displayValue(metadata.publisher) ? 'publisher' : null;
+  const publisherValue = [metadata.Publisher, metadata.publisher].find(value => displayValue(value));
   const credits = CREDIT_FIELDS.flatMap(field => {
     const credit = valueFor(metadata, field.keys);
     if (!credit) return [];
@@ -97,7 +100,7 @@ export function createComicMetadataViewModel(comic = {}) {
   return {
     title: valueFor(metadata, ['Title'])?.value || comic.name || 'Untitled comic',
     series: valueFor(metadata, ['Series'])?.value || comic.series || '',
-    publisher: valueFor(metadata, ['Publisher'])?.value || comic.publisher || '',
+    publisher: displayValue(publisherValue) || comic.publisher || '',
     summary,
     credits,
     facts,
@@ -105,9 +108,10 @@ export function createComicMetadataViewModel(comic = {}) {
     allMetadata: Object.entries(metadata)
       .filter(([key]) => key.toLocaleLowerCase() !== 'pages')
       .filter(([key]) => !/^xmlns(?::|$)/i.test(key))
+      .filter(([key]) => key.toLocaleLowerCase() !== 'publisher' || key === publisherKey)
       .filter(([, value]) => displayValue(value))
       .map(([key, value]) => ({
-        key,
+        key: key.toLocaleLowerCase() === 'publisher' ? 'Publisher' : key,
         value: key.toLocaleLowerCase() === 'number' && issueFromComicName(comic, metadata)
           ? issueFromComicName(comic, metadata)
           : fullMetadataValue(value)

@@ -35,6 +35,25 @@ describe('comic metadata presentation model', () => {
     });
   });
 
+  test('shows only the canonical Publisher key when ComicInfo repeats it in lowercase', () => {
+    const model = createComicMetadataViewModel({
+      publisher: 'DC Comics',
+      metadata: { Publisher: 'DC Comics', publisher: 'DC Comics' }
+    });
+
+    expect(model.publisher).toBe('DC Comics');
+    expect(model.allMetadata.filter(item => item.key.toLocaleLowerCase() === 'publisher')).toEqual([
+      { key: 'Publisher', value: 'DC Comics' }
+    ]);
+  });
+
+  test('capitalizes lowercase-only publisher metadata for display', () => {
+    const model = createComicMetadataViewModel({ metadata: { publisher: 'DC Comics' } });
+
+    expect(model.publisher).toBe('DC Comics');
+    expect(model.allMetadata).toContainEqual({ key: 'Publisher', value: 'DC Comics' });
+  });
+
   test('uses the T-number in the filename as the issue when ComicInfo Number is wrong', () => {
     const model = createComicMetadataViewModel({
       name: '1940 - Et Si La France Avait Continué La Guerre - T01 - Le Grand Déménagement.cbz',
