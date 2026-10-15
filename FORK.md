@@ -266,3 +266,61 @@ overlays the `.15` frontend and library search route.
 - Rollback: restore
   `/volume1/docker/comics-now/backups/docker-compose.pre-1.2.6-personal.15.yml`
   and recreate the service. No database restore is needed.
+
+## 1.2.6-personal.16 — staged locally
+
+The library search panel now includes **Reset all filters** and a live count of
+matching comics. Reset clears global search, per-field selections, reading status,
+smart scope and alphabet filters, then returns to the root library. The count is
+of comics, even when results are grouped into folders; zero matches are explicit.
+
+Dropdown values now come from `/api/v1/search/fields`, which reads the full indexed
+metadata catalog instead of the browser's lightweight library map. This includes
+language, locations and custom ComicInfo fields. The endpoint excludes hidden
+folders and comics the current user cannot access. Enable additional fields under
+**Configure searchable fields**. The existing background indexer retains every
+available ComicInfo field; a regression test verifies language, locations, custom
+credits, year and array values. This release does not initiate a live re-index.
+
+From an installed checkout, run local correctness and build checks with:
+
+```sh
+npm test -- --runInBand && npm run build
+```
+
+Run the focused browser check separately:
+
+```sh
+npx playwright test tests/e2e/library-filters.spec.js
+```
+
+Evidence recorded on October 10, 2026 (T2):
+
+- Gate 1 — passed for local correctness: reset/count/catalog regressions failed
+  before fixes, then 76 suites / 596 tests passed. The browser test was attempted
+  but Chromium crashed at launch with a MachPortRendezvous error; browser proof
+  remains open.
+- Gate 2 — deliberately not met in full: module/server syntax checks, production
+  build and `git diff --check` passed. No lint/type-check command is configured.
+  Jest emits its existing experimental VM Modules warning.
+- Gate 3 — passed: reviewed the complete diff for wiring, necessary scope, stale
+  async responses, access checks and preservation. No runtime dependency versions,
+  database schema, indexed metadata or comic files are changed.
+- Gate 4 — deliberately not met in full: Gitleaks scanned 200 commits and found
+  no leaks. Production audit could not resolve registry.npmjs.org, including an
+  escalated attempt. Lockfile retained and version synchronized; no new artifact
+  has been published, so no publication provenance was produced.
+- Gate 5 — deliberately not met in full: local suite/build command succeeded;
+  clean-clone installation and pipeline execution were not verified.
+- Gate 6 — deliberately not met in full: regression checks triggered rejected,
+  malformed and failed searches and verified visible feedback and error logging.
+  NAS index queue verification failed with SSH "No user exists for uid 501";
+  live metadata completeness is unverified.
+- Gate 7 — deliberately not met: version/changelog prepared, but not deployed.
+  Before shipping, retain the active Compose file and existing frontend/server
+  overlays. Deploy the new frontend and user-library route together; roll back
+  by restoring that saved Compose file and recreating the service. Verify the
+  live reset/count/dropdown behavior and index status after deployment.
+
+Unrelated pre-existing untracked release files were preserved. Source changes
+remain uncommitted, and the NAS was not modified.

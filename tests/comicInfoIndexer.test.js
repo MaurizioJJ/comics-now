@@ -116,6 +116,20 @@ describe('ComicInfo indexer publisher propagation', () => {
     expect(update[1][1]).toBe('Sergio Bonelli Editore');
   });
 
+  test('indexes every available ComicInfo field including language, locations and custom values', async () => {
+    metadata.getComicInfoFromArchive.mockResolvedValueOnce({
+      LanguageISO: 'fr', Locations: 'Paris', CustomCredit: 'Special Artist', Year: 1987,
+      Teams: ['Team A', 'Team B']
+    });
+    await indexer.startOrResume();
+    await jest.advanceTimersByTimeAsync(0);
+    const update = db.dbRun.mock.calls.find(([sql]) => sql.includes('UPDATE comics SET metadata ='));
+    expect(JSON.parse(update[1][0])).toMatchObject({
+      LanguageISO: 'fr', Locations: 'Paris', CustomCredit: 'Special Artist', Year: 1987,
+      Teams: ['Team A', 'Team B']
+    });
+  });
+
   test('records archive read failures and marks the row processed', async () => {
     metadata.getComicInfoFromArchive.mockRejectedValueOnce(new Error('archive read failed'));
     await indexer.startOrResume();

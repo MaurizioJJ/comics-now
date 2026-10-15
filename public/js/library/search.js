@@ -14,6 +14,8 @@ import {
 } from '../globals.js';
 import { comicIdMap } from './data.js';
 
+let searchGeneration = 0;
+
 const SEARCH_FIELDS_STORAGE_KEY = 'comicsNow.visibleSearchFields';
 const DEFAULT_VISIBLE_SEARCH_FIELDS = ['title', 'series', 'publisher', 'language', 'year', 'writer', 'penciller', 'tags', 'characters'];
 const BUILTIN_SEARCH_FIELDS = [
@@ -175,7 +177,7 @@ function initializeSearchFieldSettings() {
       input.autocomplete = 'off';
       const choices = document.createElement('div');
       choices.className = 'search-per-field-options';
-      const values = fieldOptions.get(field.value) || localOptionsForField(field.value);
+      const values = field.options || fieldOptions.get(field.value) || localOptionsForField(field.value);
       fieldOptions.set(field.value, values);
       const renderChoices = () => {
         const query = input.value.trim().toLocaleLowerCase();
@@ -229,6 +231,24 @@ function initializeSearchFieldSettings() {
     }
     if (!perFieldInputs.children.length) perFieldInputs.textContent = 'Select fields under Configure searchable fields to add search boxes here.';
   };
+
+  document.getElementById('reset-library-filters')?.addEventListener('click', () => {
+    clearTimeout(perFieldTimer);
+    if (queryInput) queryInput.value = '';
+    select.value = 'all';
+    state.lastSearchFilters = {};
+    perFieldInputs?.querySelectorAll('[data-search-field-value]').forEach(input => { input.checked = false; });
+    renderPerFieldInputs(searchFieldCatalog || BUILTIN_SEARCH_FIELDS);
+    state.activeFilter = window.activeFilter = 'all';
+    state.activeSmartFilter = window.activeSmartFilter = null;
+    state.activeAlphaFilter = window.activeAlphaFilter = 'All';
+    document.querySelectorAll('.filter-btn').forEach(button => {
+      button.classList.toggle('active', button.dataset.filter === 'all');
+    });
+    const clearSmartFilters = state.clearSmartFilterButtons || window.clearSmartFilterButtons;
+    if (typeof clearSmartFilters === 'function') clearSmartFilters();
+    showSearchView('', 'all', false, {});
+  });
 
   perFieldDetails?.addEventListener('toggle', async () => {
     if (!perFieldDetails.open) return;
@@ -285,7 +305,7 @@ if (document.readyState === 'loading') {
 export async function rerenderSearchResults() {
   const lastSearchQuery = state.lastSearchQuery || window.lastSearchQuery;
   const lastSearchField = state.lastSearchField || window.lastSearchField;
-  if (lastSearchQuery) {
+  if (lastSearchQuery || Object.keys(state.lastSearchFilters || {}).length) {
     await showSearchView(lastSearchQuery, lastSearchField, true, state.lastSearchFilters || {});
   }
 }
@@ -299,6 +319,12 @@ export function getSearchFieldFilters() {
 }
 
 export async function showSearchView(query, field, useCache = false, filters = {}) {
+  const generation = ++searchGeneration;
+  const count = document.getElementById('search-results-count');
+  if (count) count.textContent = '';
+  const updateCount = comics => {
+    if (count) count.textContent = `${comics.length} matching ${comics.length === 1 ? 'comic' : 'comics'}`;
+  };
   const _isNavigatingFromRouter = state._isNavigatingFromRouter || window._isNavigatingFromRouter;
   const router = state.router || window.router;
   const hasGlobalQuery = Boolean(String(query || '').trim());
@@ -309,6 +335,8 @@ export async function showSearchView(query, field, useCache = false, filters = {
     state.lastSearchFilters = {};
     window.lastSearchQuery = '';
     window.lastSearchField = 'all';
+    state.lastSearchResults = window.lastSearchResults = null;
+    if (searchResultsView) searchResultsView.classList.add('hidden');
     const showRoot = state.showRootFolderList || window.showRootFolderList;
     if (typeof showRoot === 'function') showRoot({ force: true });
     return;
@@ -359,6 +387,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
   }
 
   const renderResults = (comics) => {
+    updateCount(comics);
     if (searchResultsContainer) searchResultsContainer.setAttribute('aria-busy', 'false');
     const mode = state.searchViewMode || window.searchViewMode || 'list';
     if (mode === 'folders') {
@@ -389,6 +418,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
     const comics = searchLibraryLocally(state.lastSearchQuery, state.lastSearchField, normalizedFilters);
     state.lastSearchResults = comics;
     window.lastSearchResults = comics;
+    updateCount(comics);
     if (comics.length === 0) {
       if (searchResultsContainer) {
         searchResultsContainer.setAttribute('aria-busy', 'false');
@@ -404,10 +434,14 @@ export async function showSearchView(query, field, useCache = false, filters = {
     const baseUrl = state.API_BASE_URL || window.API_BASE_URL || '';
     const params = new URLSearchParams({ query: state.lastSearchQuery, field: state.lastSearchField, filters: JSON.stringify(normalizedFilters) });
     const response = await fetch(`${baseUrl}/api/v1/search?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const comics = await response.json();
+    if (generation !== searchGeneration) return;
+    if (!Array.isArray(comics)) throw new Error('Invalid search results');
     state.lastSearchResults = comics;
     window.lastSearchResults = comics;
     
+    updateCount(comics);
     if (comics.length === 0) {
       if (searchResultsContainer) {
         searchResultsContainer.setAttribute('aria-busy', 'false');
@@ -418,6 +452,7 @@ export async function showSearchView(query, field, useCache = false, filters = {
 
     renderResults(comics);
   } catch (error) {
+    if (generation !== searchGeneration) return;
     console.error('[search] Error:', error);
     if (searchResultsContainer) {
       searchResultsContainer.setAttribute('aria-busy', 'false');

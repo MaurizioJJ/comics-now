@@ -105,6 +105,26 @@ describe('metadata field search', () => {
     archiveReader.mockRestore();
   });
 
+  test('catalog supplies indexed values for every discovered ComicInfo field', async () => {
+    const rows = [{ ...comics[0], metadata: JSON.stringify({ LanguageISO: 'fr', Locations: 'Paris', CustomCredit: 'Special Artist', Year: 1987 }) }];
+    const result = response();
+    await createRouteHarness(rows).get('/api/v1/search/fields')({ user: { userId: 'u1' } }, result);
+    expect(result.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'language', options: ['fr'] }),
+      expect.objectContaining({ value: 'metadata:Locations', options: ['Paris'] }),
+      expect.objectContaining({ value: 'metadata:CustomCredit', options: ['Special Artist'] }),
+      expect.objectContaining({ value: 'year', options: ['1987'] })
+    ]));
+  });
+
+  test('field options omit comics the user cannot access', async () => {
+    const result = response();
+    await createRouteHarness(comics, { dbGet: async () => ({ role: 'user' }), checkComicAccess: async () => false })
+      .get('/api/v1/search/fields')({ user: { userId: 'restricted' } }, result);
+    expect(result.body.every(field => field.options.length === 0)).toBe(true);
+    expect(result.body.some(field => field.value === 'metadata:CustomCredit')).toBe(false);
+  });
+
   test('catalog includes built-in, language and discovered metadata fields', async () => {
     const result = response();
     await createRouteHarness(comics).get('/api/v1/search/fields')({ user: { userId: 'u1' } }, result);

@@ -133,7 +133,32 @@ function searchFieldsForMetadataRows(rows) {
       }
     }
   }
-  return [...fields.values()];
+  const options = new Map([...fields.keys()].map(key => [key, new Set()]));
+  const fieldByKey = new Map();
+  for (const field of fields.keys()) {
+    if (field === 'all') continue;
+    const keys = SEARCH_FIELD_ALIASES[field] || [field.replace(/^metadata:/, '')];
+    for (const key of keys) fieldByKey.set(key.toLocaleLowerCase(), field);
+  }
+  const scalarValues = value => {
+    if (Array.isArray(value)) return value.flatMap(scalarValues);
+    if (value && typeof value === 'object') return Object.values(value).flatMap(scalarValues);
+    if (value === null || value === undefined) return [];
+    return [String(value).trim()].filter(Boolean);
+  };
+  const addValues = (field, value) => {
+    if (!field) return;
+    for (const item of scalarValues(value)) options.get(field).add(item);
+  };
+  for (const row of rows) {
+    let metadata;
+    try { metadata = JSON.parse(row.metadata || '{}'); } catch { metadata = {}; }
+    for (const [key, value] of Object.entries(metadata)) addValues(fieldByKey.get(key.toLocaleLowerCase()), value);
+    addValues('title', row.name);
+    addValues('series', row.series);
+    addValues('publisher', row.publisher);
+  }
+  return [...fields.values()].map(field => ({ ...field, options: [...options.get(field.value)].sort((a, b) => a.localeCompare(b)) }));
 }
 
 module.exports = function attach(router, deps) {
@@ -333,8 +358,19 @@ module.exports = function attach(router, deps) {
 
   router.get('/api/v1/search/fields', requireAuth, async (req, res) => {
     try {
-      const rows = await dbAll('SELECT metadata FROM comics');
-      res.json(searchFieldsForMetadataRows(rows));
+      const userId = req.user?.userId || 'default-user';
+      const user = await dbGet('SELECT role FROM users WHERE userId = ?', [userId]);
+      const role = user?.role || 'user';
+      const directories = getComicsDirectories();
+      const accessList = role === 'admin' ? [] : await dbAll(
+        'SELECT accessType, accessValue, direct_access, child_access FROM user_library_access WHERE userId = ? AND (direct_access = 1 OR child_access = 1)', [userId]
+      );
+      const rows = await dbAll('SELECT id, path, name, publisher, series, metadata FROM comics');
+      const allowed = await mapWithConcurrency(rows, async row => {
+        if (isPathExcluded(row.path)) return false;
+        return role === 'admin' || await checkComicAccess(userId, role, row.path, row.publisher, row.series, directories, row.id, accessList);
+      });
+      res.json(searchFieldsForMetadataRows(rows.filter((_, index) => allowed[index])));
     } catch (e) {
       log('ERROR', 'LIST', `Failed to list searchable metadata fields: ${e.message}`);
       res.status(500).json({ message: 'Failed to load searchable metadata fields' });

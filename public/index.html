@@ -1386,6 +1386,10 @@
         <!-- Visually-hidden submit so the keyboard "Search" key (and Enter) reliably trigger submit -->
         <button type="submit" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">Search</button>
       </form>
+      <div class="flex flex-wrap items-center gap-3 mt-3">
+        <button type="button" id="reset-library-filters" class="bg-gray-700 hover:bg-gray-600 text-white text-sm px-3 py-2 rounded-lg">Reset all filters</button>
+        <span id="search-results-count" role="status" aria-live="polite" class="text-sm text-gray-300"></span>
+      </div>
       <details id="search-per-field" class="search-field-settings">
         <summary>Filter by field</summary>
         <p class="search-field-settings-hint">Select multiple values in each dropdown. Selected values within a field match any; different fields are combined. Leave the global search empty to use only these filters.</p>
